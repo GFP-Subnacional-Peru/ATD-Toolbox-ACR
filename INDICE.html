@@ -3,146 +3,92 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sistema ATD ACR — San Martín, Loreto y Cusco</title>
+<title>ATD Toolbox ACR — Loreto, San Martín y Cusco</title>
 <style>
   * { box-sizing: border-box; }
-  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; color: #1a2b3c; background: #eef3f8; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; margin: 0; color: #1a2b3c; background: #f4f7fa; }
   header {
     background: linear-gradient(135deg, #1e4d7b 0%, #2F5F8F 55%, #3d7ab5 100%);
-    color: #fff; padding: 40px 24px 36px; text-align: center;
+    color: #fff; padding: 36px 24px 32px; text-align: center;
   }
-  .logos { display: flex; gap: 28px; justify-content: center; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
-  .logos img { height: 64px; background: rgba(255,255,255,.92); padding: 6px 10px; border-radius: 6px; }
-  h1 { font-size: 1.4rem; margin: 0 auto; max-width: 860px; line-height: 1.35; font-weight: 650; }
-  .sub { margin: 12px 0 0; opacity: .95; font-size: 1.05rem; }
-  .wrap { max-width: 980px; margin: 28px auto; padding: 0 20px 56px; }
-  h2 { font-size: 1.15rem; color: #1e4d7b; margin: 0 0 14px; }
-  .lead {
-    background: #fff; border-left: 5px solid #2F5F8F; border-radius: 0 8px 8px 0;
-    padding: 16px 18px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(30,60,90,.06);
-  }
-  .lead p { margin: 0; line-height: 1.5; color: #334; }
-  .cta {
-    text-align: center; margin-bottom: 28px;
-  }
-  .cta a {
-    display: inline-block; background: #C62828; color: #fff; text-decoration: none;
-    font-weight: 700; padding: 12px 22px; border-radius: 8px; margin: 4px;
-  }
-  .cta a.sec { background: #2F5F8F; }
-  .steps {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 32px;
-  }
-  .step {
-    background: #fff; border-radius: 8px; padding: 16px; text-align: center;
-    box-shadow: 0 2px 8px rgba(30,60,90,.06);
-  }
-  .step .n {
-    display: inline-block; width: 32px; height: 32px; line-height: 32px; border-radius: 50%;
-    background: #2F5F8F; color: #fff; font-weight: 700; margin-bottom: 8px;
-  }
-  .step strong { display: block; margin-bottom: 4px; }
-  .step span { color: #5a6b7d; font-size: .9rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  header img { height: 72px; margin-bottom: 12px; }
+  h1 { font-size: 1.35rem; margin: 0 auto; max-width: 820px; line-height: 1.35; font-weight: 600; }
+  .sub { margin: 10px 0 0; opacity: .92; font-size: 1.05rem; }
+  .wrap { max-width: 960px; margin: 32px auto; padding: 0 20px 48px; }
+  h2 { font-size: 1.1rem; color: #2F5F8F; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
   .card {
-    background: #fff; border-radius: 10px; padding: 22px;
-    box-shadow: 0 2px 10px rgba(30,60,90,.08);
+    background: #fff; border-radius: 8px; padding: 20px;
+    box-shadow: 0 2px 8px rgba(30,60,90,.08);
   }
-  .card h3 { margin: 0 0 6px; font-size: 1.25rem; }
-  .acr { color: #5a6b7d; font-size: .92rem; margin: 0 0 14px; line-height: 1.45; }
-  .btn {
-    display: inline-block; margin: 4px 6px 4px 0; padding: 8px 14px; border-radius: 6px;
-    background: #2F5F8F; color: #fff !important; text-decoration: none; font-weight: 600; font-size: .9rem;
-  }
-  .btn.alt { background: #fff; color: #2F5F8F !important; border: 2px solid #2F5F8F; }
+  .card h3 { margin: 0 0 8px; font-size: 1.2rem; }
+  .acr { color: #5a6b7d; font-size: .9rem; margin: 0 0 10px; line-height: 1.4; }
+  .path { margin: 0 0 12px; }
+  .links a { color: #2F5F8F; font-weight: 600; text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
   .tools {
-    background: #fff; border-radius: 10px; padding: 22px; margin-top: 28px;
+    background: #fff; border-radius: 8px; padding: 20px; margin-top: 28px;
     box-shadow: 0 2px 8px rgba(30,60,90,.08);
   }
   .tools table { width: 100%; border-collapse: collapse; }
-  .tools th, .tools td { border: 1px solid #d0dce8; padding: 10px 12px; text-align: left; }
+  .tools th, .tools td { border: 1px solid #d0dce8; padding: 10px; text-align: left; }
   .tools th { background: #e8f0f8; color: #1e4d7b; }
-  .note { margin-top: 22px; color: #5a6b7d; font-size: .92rem; line-height: 1.45; }
-  footer { text-align: center; color: #7a8a9a; font-size: .85rem; margin-top: 36px; }
+  footer { text-align: center; color: #7a8a9a; font-size: .85rem; margin-top: 32px; }
 </style>
 </head>
 <body>
 <header>
-  <div class="logos">
-    <img src="regiones/ATD_Loreto/logos/logo_gfp.png" alt="GFP Subnacional" />
-    <img src="regiones/ATD_Loreto/logos/logo_SECO.jpg" alt="SECO" />
-    <img src="regiones/ATD_Loreto/logos/logo_basel.png" alt="Basel" />
-  </div>
-  <h1>Sistema de Alertas Tempranas de Deforestación<br/>para Áreas de Conservación Regional</h1>
-  <p class="sub">Aplicación en San Martín, Loreto y Cusco · GFP Subnacional · Suiza apoyando al Perú</p>
+  <img src="regiones/ATD_Loreto/logos/logo_gfp.png" alt="GFP Subnacional" />
+  <h1>ATD Toolbox ACR — Loreto, San Martín y Cusco</h1>
+  <p class="sub">Caja de herramientas de Alertas Tempranas de Deforestación · GFP Subnacional · Suiza apoyando al Perú</p>
 </header>
-
 <div class="wrap">
-  <div class="lead">
-    <p><strong>¿Para quién es?</strong> Personal de cada ACR: bajar alertas, revisarlas con satélite y sacar el informe PDF.
-    El flujo es <strong>igual en las tres regiones</strong>. No necesita ser programador.</p>
-  </div>
-
-  <div class="cta">
-    <a href="https://favio138-hub.github.io/SATD-ACR-Peru/docs/GUIA_VISUAL.html">Abrir guía visual (página web)</a>
-    <a class="sec" href="docs/GUIA_VISUAL.html">Abrir guía local</a>
-    <a class="sec" href="https://favio138-hub.github.io/SATD-ACR-Peru/docs/GUIA_VISUAL.html#descarga">Tamaño de descarga</a>
-  </div>
-
-  <h2>El trabajo en 3 pasos</h2>
-  <div class="steps">
-    <div class="step"><div class="n">1</div><strong>H1 · Geobosques</strong><span>Descargar alertas</span></div>
-    <div class="step"><div class="n">2</div><strong>H2 · Visor satelital</strong><span>Fotointerpretar</span></div>
-    <div class="step"><div class="n">3</div><strong>H3 · Reporte PDF</strong><span>Informe oficial</span></div>
-  </div>
-
-  <h2>Seleccione su región</h2>
-  <div class="grid">
-    <article class="card" style="border-top:5px solid #1565C0">
-      <h3>Loreto</h3>
-      <p class="acr">ACR09 Ampiyacu · ACR04 Tamshiyacu Tahuayo · ACR17 Maijuna Kichwa · ACR10 Alto Nanay<br/>
-      Paquete de referencia (más documentado). Flujo igual que las otras regiones.</p>
-      <a class="btn" href="regiones/ATD_Loreto/guia/GUIA_ATD_LORETO.html">Guía regional</a>
-      <a class="btn alt" href="regiones/ATD_Loreto/docs/EJEMPLO_reporte_ATD_Loreto.pdf">PDF ejemplo</a>
-      <a class="btn alt" href="docs/GUIA_VISUAL.html">Guía visual</a>
-    </article>
-
-    <article class="card" style="border-top:5px solid #2E7D32">
-      <h3>San Martín</h3>
-      <p class="acr">ACR01 Cordillera Escalera (CE) · ACR21 BOSHUMI<br/>
-      Incluye GDB de monitoreo y cartografía ZEE.</p>
-      <a class="btn" href="regiones/ATD_San_Martin/guia/GUIA_ATD_SAN_MARTIN.html">Guía regional</a>
-      <a class="btn alt" href="regiones/ATD_San_Martin/docs/EJEMPLO_reporte_ATD_San_Martin.pdf">PDF ejemplo</a>
-      <a class="btn alt" href="docs/GUIA_VISUAL.html">Guía visual</a>
-    </article>
-
-    <article class="card" style="border-top:5px solid #6A1B9A">
-      <h3>Cusco</h3>
-      <p class="acr">ACR07 Choquequirao · ACR26 Chuyapi Urusayhua · ACR30 Q'eros Kosnipata<br/>
-      Mismo flujo H1 → H2 → H3.</p>
-      <a class="btn" href="regiones/ATD_Cuzco/guia/GUIA_ATD_CUZCO.html">Guía regional</a>
-      <a class="btn alt" href="regiones/ATD_Cuzco/docs/EJEMPLO_reporte_ATD_Cuzco.pdf">PDF ejemplo</a>
-      <a class="btn alt" href="docs/GUIA_VISUAL.html">Guía visual</a>
-    </article>
-  </div>
-
-  <div class="tools">
-    <h2>Qué hace cada herramienta</h2>
-    <table>
-      <tr><th>Paso</th><th>Herramienta</th><th>Resultado para usted</th></tr>
-      <tr><td><strong>H1</strong></td><td>Descarga Geobosques</td><td>Las alertas quedan en la base de datos de su región</td></tr>
-      <tr><td><strong>H2</strong></td><td>Visor satelital</td><td>Compara antes/después y clasifica la alerta</td></tr>
-      <tr><td><strong>H3</strong></td><td>Reporte PDF</td><td>Informe institucional listo para entregar</td></tr>
-    </table>
-  </div>
-
-  <p class="note">
-    <strong>Descarga:</strong> el sistema completo ocupa ≈ <strong>180 MB</strong>.
-    Si solo necesita una región, conserve esa carpeta (~45–67 MB).
-    Ver <a href="https://favio138-hub.github.io/SATD-ACR-Peru/docs/GUIA_VISUAL.html#descarga">detalle por región</a>.
+<h2>Seleccione su región</h2>
+<div class="grid">
+<article class="card" style="border-top:4px solid #1565C0">
+  <h3>Loreto</h3>
+  <p class="acr">ACR04 · ACR09 · ACR10 · ACR17 · ACR34 · ACR37</p>
+  <p class="path"><code>regiones/ATD_Loreto/</code></p>
+  <p class="links">
+    <a href="regiones/ATD_Loreto/guia/GUIA_ATD_LORETO.html">Guía de uso</a> ·
+    <a href="regiones/ATD_Loreto/docs/EJEMPLO_reporte_ATD_Loreto.pdf">PDF ejemplo</a> ·
+    <a href="regiones/ATD_Loreto/README.md">README</a>
   </p>
-
-  <footer>GFP Subnacional 2026 · ArcGIS Pro 3.x · Uso institucional ATD ACR</footer>
+</article><article class="card" style="border-top:4px solid #2E7D32">
+  <h3>San Martín</h3>
+  <p class="acr">ACR01 Cordillera Escalera · ACR21 BOSHUMI</p>
+  <p class="path"><code>regiones/ATD_San_Martin/</code></p>
+  <p class="links">
+    <a href="regiones/ATD_San_Martin/guia/GUIA_ATD_SAN_MARTIN.html">Guía de uso</a> ·
+    <a href="regiones/ATD_San_Martin/docs/EJEMPLO_reporte_ATD_San_Martín.pdf">PDF ejemplo</a> ·
+    <a href="regiones/ATD_San_Martin/README.md">README</a>
+  </p>
+</article><article class="card" style="border-top:4px solid #6A1B9A">
+  <h3>Cusco</h3>
+  <p class="acr">ACR07 · ACR26 · ACR30</p>
+  <p class="path"><code>regiones/ATD_Cuzco/</code></p>
+  <p class="links">
+    <a href="regiones/ATD_Cuzco/guia/GUIA_ATD_CUZCO.html">Guía de uso</a> ·
+    <a href="regiones/ATD_Cuzco/docs/EJEMPLO_reporte_ATD_Cusco.pdf">PDF ejemplo</a> ·
+    <a href="regiones/ATD_Cuzco/README.md">README</a>
+  </p>
+</article>
+</div>
+<div class="tools">
+<h2>Herramientas ATD (cada región)</h2>
+<table>
+<tr><th>Código</th><th>Herramienta</th><th>Función</th></tr>
+<tr><td><strong>H1</strong></td><td>Descarga Geobosques</td><td>Inserta alertas en la geodatabase</td></tr>
+<tr><td><strong>H2</strong></td><td>Visor satelital + Actualizar Superficie</td><td>Fotointerpretación antes/después y hectáreas tras recorte</td></tr>
+<tr><td><strong>H3</strong></td><td>Reporte PDF</td><td>Diagnóstico e informe institucional (Causa→Actividad)</td></tr>
+</table>
+</div>
+<p style="margin-top:20px;color:#5a6b7d;font-size:.9rem;">
+Documentación nacional (Loreto 2026):
+<a href="docs/cuadro_causas_deforestacion_loreto_2026.png">Causas de deforestación</a> ·
+<a href="docs/grafico_alertas_atd_acr_loreto_2026.png">Alertas ATD</a>
+</p>
+<footer>GFP Subnacional 2026 · ArcGIS Pro 3.x · Uso institucional ATD ACR</footer>
 </div>
 </body>
 </html>

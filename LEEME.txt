@@ -1,5 +1,5 @@
-Sistema de Alertas Tempranas de Deforestación para Áreas de Conservación Regional
-Aplicación en San Martín, Loreto y Cusco
+ATD Toolbox ACR — Loreto, San Martín y Cusco
+Caja de herramientas de Alertas Tempranas de Deforestación
 ============================================================
 
 PARA QUIÉN ES
@@ -13,11 +13,11 @@ CÓMO EMPEZAR
   5. Siga la guía HTML de su región
 
 FLUJO DE TRABAJO
-  H1 Geobosques → H2 Visor satelital → H3 Reporte PDF
+  H1 Geobosques → H2 Visor (antes/después) → Actualizar Superficie (ha) → H3 Reporte PDF
 
 CARPETAS
-  regiones/ATD_Loreto/       — 4 ACR Loreto (paquete de referencia)
-  regiones/ATD_San_Martin/   — CE + BOSHUMI
-  regiones/ATD_Cuzco/        — 3 ACR Cusco
+  regiones/ATD_Loreto/       — ACR04, 09, 10, 17, 34, 37
+  regiones/ATD_San_Martin/   — ACR01 CE + ACR21 BOSHUMI
+  regiones/ATD_Cuzco/        — ACR07, 26, 30
 
-Tamaño aproximado del sistema: ~2,9 GB
+NO mezclar GDB ni logos entre regiones.

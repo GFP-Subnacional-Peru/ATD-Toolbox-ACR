@@ -5,7 +5,7 @@ REPORTE ATD - ArcGIS Pro Toolbox
 GFP Subnacional / Loreto · Cuzco · San Martin
 ===============================================================================
 """
-__version__ = "1.1.5"
+__version__ = "1.1.7"
 
 import arcpy
 import json
@@ -17,8 +17,6 @@ import warnings
 from datetime import datetime
 
 _toolbox_dir = os.path.dirname(os.path.abspath(__file__))
-if _toolbox_dir not in sys.path:
-    sys.path.insert(0, _toolbox_dir)
 
 
 def _sanear_sys_path():
@@ -32,7 +30,36 @@ def _sanear_sys_path():
     ]
 
 
+def _forzar_imports_de_esta_carpeta():
+    """Saca atd_* de memoria para recargar el .py del disco (si no, H3 abre con !)."""
+    aqui = os.path.abspath(_toolbox_dir)
+    yo = str(__name__ or "")
+    proteger = {
+        yo, "__main__", "atd_h3_reporte", "atd_report_worker",
+        "atd_ejecutar_estable",
+    }
+    sys.path[:] = [
+        p for p in sys.path
+        if os.path.abspath(p) != aqui
+    ]
+    sys.path.insert(0, aqui)
+    for name in list(sys.modules):
+        if name in proteger or (yo and name.startswith(yo + ".")):
+            continue
+        if name == "atd_imagenes_h3" or name.startswith("atd_"):
+            sys.modules.pop(name, None)
+
+
+def _geom_a_wgs84_fallback(geom, epsg_hint=32718):
+    return geom
+
+
+def _epsg_geom_auto_fallback(geom, epsg_hint=4326):
+    return 4326
+
+
 _sanear_sys_path()
+_forzar_imports_de_esta_carpeta()
 
 from atd_arcpy_io import (
     _parse_fecha,
@@ -41,13 +68,47 @@ from atd_arcpy_io import (
     filtrar_registros_seleccion,
     listar_opciones_alertas_arcpy,
     parse_seleccion_alerta,
+    texto_actividad,
+    texto_efecto,
 )
-from atd_imagenes_h3 import (
-    buscar_imagen_local,
-    marcar_png_con_alerta,
-    quemar_vector_alerta_en_imagen,
-    resolver_oid_imagen,
-)
+try:
+    import atd_imagenes_h3 as _img_h3
+    buscar_imagen_local = _img_h3.buscar_imagen_local
+    bounds_imagen_desde_meta = _img_h3.bounds_imagen_desde_meta
+    marcar_png_con_alerta = _img_h3.marcar_png_con_alerta
+    quemar_vector_alerta_en_imagen = _img_h3.quemar_vector_alerta_en_imagen
+    resolver_oid_imagen = _img_h3.resolver_oid_imagen
+    geom_a_wgs84 = getattr(_img_h3, "geom_a_wgs84", _geom_a_wgs84_fallback)
+    _epsg_geom_auto = getattr(_img_h3, "_epsg_geom_auto", _epsg_geom_auto_fallback)
+    aplicar_vector_y_zoom = getattr(_img_h3, "aplicar_vector_y_zoom", None)
+except Exception:
+    def buscar_imagen_local(*_a, **_k):
+        return None, None
+
+    def bounds_imagen_desde_meta(*_a, **_k):
+        return None, 4326
+
+    def marcar_png_con_alerta(ruta_png, *_a, **_k):
+        return ruta_png
+
+    def quemar_vector_alerta_en_imagen(img_rgb, *_a, **_k):
+        return img_rgb
+
+    def resolver_oid_imagen(*_a, **_k):
+        return None
+
+    geom_a_wgs84 = _geom_a_wgs84_fallback
+    _epsg_geom_auto = _epsg_geom_auto_fallback
+    aplicar_vector_y_zoom = None
+if aplicar_vector_y_zoom is None:
+    def aplicar_vector_y_zoom(
+        img_rgb, bounds, geom, epsg_bounds=4326, epsg_geom=4326,
+        estilo="poligono", zoom=True,
+    ):
+        return quemar_vector_alerta_en_imagen(
+            img_rgb, bounds, geom, epsg_bounds, epsg_geom, estilo
+        )
+from atd_codigo_alerta import enrich_dataframe_codigos, resolver_codigo_alerta
 from atd_region_config import (
     REGION_CONFIGS,
     DEFAULT_GDB_LORETO,
@@ -78,6 +139,7 @@ from atd_region_config import (
     LOGO_REGION_KEY,
     REPORTE_TAG,
     TEXTO_CIERRE,
+    URL_DASHBOARD_ACR,
 )
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -91,10 +153,9 @@ DOMINIO_CAUSA = {
     10: "Transporte / Infraestructura", 11: "Ocupacion Humana",
     12: "Restos Arqueologicos", 13: "Otros",
     14: "Natural", 15: "Incendio Antropico",
-    16: "Falsa Alerta", 99: "Sin Clasificar",
+    16: "Falsa Alerta", 99: "Otros",
 }
-CAUSAS_EXCLUIDAS_REPORTE = {16, 99}  # Falsa alerta
-CAUSAS_NO_ANTROPICAS = CAUSAS_EXCLUIDAS_REPORTE  # compat
+CAUSAS_NO_ANTROPICAS = {16}  # solo falsa alerta; Natural (14) SI entra al reporte
 DOMINIO_CONF = {
     1: "Alta (prioritaria para revisión)",
     2: "Media (revisar en campo)",
@@ -245,6 +306,165 @@ def _set_param_si_cambia(param, valor):
     except Exception:
         try:
             param.value = valor
+        except Exception:
+            pass
+
+
+def _capa_alerta_coincide(lyr, fc_name):
+    if not fc_name or lyr is None:
+        return False
+    fc_l = str(fc_name).strip().lower()
+    nom = (getattr(lyr, "name", None) or "").strip().lower()
+    if nom == fc_l or nom.startswith(fc_l + "_"):
+        return True
+    try:
+        ds = (getattr(lyr, "datasetName", None) or "").strip().lower()
+        if ds == fc_l:
+            return True
+    except Exception:
+        pass
+    try:
+        src = (getattr(lyr, "dataSource", None) or "").replace("\\", "/").lower()
+        if src.endswith("/" + fc_l):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _oids_seleccion_mapa(fc_name):
+    """OBJECTID de poligonos seleccionados en el mapa (capa de alertas)."""
+    oids = []
+    try:
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
+    except Exception:
+        return []
+    try:
+        mapas = aprx.listMaps() or []
+    except Exception:
+        return []
+    for mapa in mapas:
+        try:
+            capas = mapa.listLayers() or []
+        except Exception:
+            continue
+        for lyr in capas:
+            try:
+                if not getattr(lyr, "isFeatureLayer", False):
+                    continue
+            except Exception:
+                continue
+            if not _capa_alerta_coincide(lyr, fc_name):
+                continue
+            sel = None
+            try:
+                sel = lyr.getSelectionSet()
+            except Exception:
+                sel = None
+            if not sel:
+                try:
+                    fid = arcpy.Describe(lyr).FIDSet or ""
+                    if fid:
+                        sel = [
+                            int(x) for x in str(fid).replace(";", " ").split()
+                            if str(x).strip().isdigit()
+                        ]
+                except Exception:
+                    sel = None
+            if not sel:
+                continue
+            for oid in sel:
+                try:
+                    oids.append(int(oid))
+                except (TypeError, ValueError):
+                    pass
+    vistos = set()
+    out = []
+    for oid in oids:
+        if oid not in vistos:
+            vistos.add(oid)
+            out.append(oid)
+    return out
+
+
+def _oids_desde_texto_alerta(texto):
+    """Lista de OID en la etiqueta [SELECCION MAPA] / OID:26|..."""
+    import re
+
+    t = str(texto or "")
+    m = re.search(r"OID:\s*([\d,\s;]+)", t, re.I)
+    if m:
+        nums = [int(x) for x in re.findall(r"\d+", m.group(1))]
+        if nums:
+            return nums
+    return [int(x) for x in re.findall(r"OID:\s*(\d+)", t, re.I)]
+
+
+def _oid_sel_desde_alerta(alerta_sel):
+    """OID unico (int), lista de OID (mapa) o flags de parse_seleccion_alerta."""
+    t = str(alerta_sel or "")
+    if t.upper().startswith("[SELECCION"):
+        oids = _oids_desde_texto_alerta(t)
+        if not oids:
+            return "sin_alertas"
+        return oids[0] if len(oids) == 1 else oids
+    return parse_seleccion_alerta(t)
+
+
+def _etiqueta_seleccion_mapa(oids, opts):
+    if not oids:
+        return None
+    if len(oids) == 1:
+        oid = oids[0]
+        match = ""
+        for o in opts or []:
+            if str(o).startswith(f"OID:{oid}|") or f"OID:{oid}|" in str(o):
+                match = str(o)
+                if match.startswith("[SELECCION MAPA]"):
+                    match = match.split("]", 1)[-1].strip()
+                break
+        if match:
+            return f"[SELECCION MAPA] {match}"
+        return f"[SELECCION MAPA] OID:{oid}|poligono seleccionado en el mapa"
+    lista = ", ".join(str(x) for x in oids[:15])
+    extra = "" if len(oids) <= 15 else f" +{len(oids) - 15}"
+    return f"[SELECCION MAPA] {len(oids)} alertas | OID:{lista}{extra}"
+
+
+def _leer_alertas_por_oids(gdb_path, fc_alertas, oids, msg_fn=None):
+    """Lee una o varias alertas por OBJECTID."""
+    fn = msg_fn or arcpy.AddMessage
+    oids = [int(x) for x in oids]
+    if len(oids) == 1:
+        return _leer_alerta_por_oid(gdb_path, fc_alertas, oids[0], msg_fn=fn)
+    fc_path = os.path.join(gdb_path, fc_alertas)
+    if not arcpy.Exists(fc_path):
+        raise RuntimeError(f"No existe la capa: {fc_path}")
+    oid_field = arcpy.Describe(fc_path).OIDFieldName
+    scratch = _scratch_gdb_temporal()
+    out_name = "ATD_sel_alertas"
+    out_fc = os.path.join(scratch, out_name)
+    if arcpy.Exists(out_fc):
+        arcpy.management.Delete(out_fc)
+    lista = ",".join(str(x) for x in oids)
+    arcpy.conversion.FeatureClassToFeatureClass(
+        in_features=fc_path,
+        out_path=scratch,
+        out_name=out_name,
+        where_clause=f"{oid_field} IN ({lista})",
+    )
+    n = int(arcpy.management.GetCount(out_fc)[0])
+    fn(f"  Lectura seleccion mapa ({len(oids)} OID): {n:,} registro(s)")
+    if n == 0:
+        raise RuntimeError(
+            f"No se encontraron los OBJECTID {lista} en {fc_alertas}"
+        )
+    try:
+        return _fc_a_geodataframe(out_fc, msg_fn=fn)
+    finally:
+        try:
+            if arcpy.Exists(out_fc):
+                arcpy.management.Delete(out_fc)
         except Exception:
             pass
 
@@ -429,7 +649,7 @@ def _aplicar_filtros_acr_periodo(alertas_gdf, fecha_ini, fecha_fin, msg_fn=None)
     )
     def _causa_ok(row):
         c = row.get("_causa_int")
-        if c in CAUSAS_EXCLUIDAS_REPORTE:
+        if c in CAUSAS_NO_ANTROPICAS:
             return False
         if pd.notna(c):
             return True
@@ -438,26 +658,22 @@ def _aplicar_filtros_acr_periodo(alertas_gdf, fecha_ini, fecha_fin, msg_fn=None)
         except (TypeError, ValueError):
             return False
 
-    mask_reporte = df_acr.apply(_causa_ok, axis=1)
-    df_reporte = df_acr[mask_reporte].copy()
-    sin_causa = df_reporte["_causa_int"].isna()
+    mask_antrop = df_acr.apply(_causa_ok, axis=1)
+    df_antrop = df_acr[mask_antrop].copy()
+    sin_causa = df_antrop["_causa_int"].isna()
     if sin_causa.any():
-        df_reporte.loc[sin_causa, "_causa_int"] = 99
-        df_reporte.loc[sin_causa, "causa_texto"] = "Sin clasificar (sin md_causa en GDB)"
+        df_antrop.loc[sin_causa, "_causa_int"] = 99
+        df_antrop.loc[sin_causa, "causa_texto"] = "Otros"
         fn(f"  AVISO: {int(sin_causa.sum())} alerta(s) sin md_causa — incluidas como pendientes")
-    n_nat = int((df_reporte["_causa_int"] == 14).sum())
-    n_ant = int(df_reporte["_causa_int"].isin(
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15}
-    ).sum())
-    fn(f"  Para reporte : {len(df_reporte):,} (antrop. {n_ant:,} + natural {n_nat:,})")
+    fn(f"  Reportables (antropico + natural, sin falsa alerta): {len(df_antrop):,}")
 
     fi = pd.to_datetime(fecha_ini, dayfirst=True)
     ff = pd.to_datetime(fecha_fin, dayfirst=True)
-    df_reporte["md_fecimg"] = pd.to_datetime(
-        df_reporte["md_fecimg"], errors="coerce"
+    df_antrop["md_fecimg"] = pd.to_datetime(
+        df_antrop["md_fecimg"], errors="coerce"
     ).dt.tz_localize(None)
-    df_periodo = df_reporte[
-        (df_reporte["md_fecimg"] >= fi) & (df_reporte["md_fecimg"] <= ff)
+    df_periodo = df_antrop[
+        (df_antrop["md_fecimg"] >= fi) & (df_antrop["md_fecimg"] <= ff)
     ].copy()
     fn(f"  En periodo   : {len(df_periodo):,}")
     return df_periodo
@@ -554,9 +770,12 @@ def enriquecer_alertas(df_periodo, modo_ligero=False):
         df["anp_codi"] = df["_anp_norm"].astype(str).str.strip()
     else:
         df["anp_codi"] = df["anp_codi"].apply(normalizar_anp_codi).astype(str).str.strip()
-    df["causa_texto"] = df["_causa_int"].apply(
-        lambda v: DOMINIO_CAUSA.get(int(v), f"Codigo {v}")
-        if pd.notna(v) else "Sin clasificar"
+    df["causa_texto"] = df.apply(
+        lambda r: texto_actividad(
+            DOMINIO_CAUSA.get(int(r["_causa_int"])) if pd.notna(r["_causa_int"]) else None,
+            r["_causa_int"],
+        ),
+        axis=1,
     )
     df["conf_texto"] = df["md_conf"].apply(
         lambda v: _etiqueta_confianza(v) if pd.notna(v) else "Sin clasificar"
@@ -850,8 +1069,9 @@ def generar_html_procedimiento(ruta_html, region_nombre="Loreto"):
 
 <h2>1. Preparación</h2>
 <ol>
-<li>Abrir el reporte PDF y la vista dinámica swipe (imágenes exportadas desde H2).</li>
-<li>En el enlace <strong>Visualización</strong>, deslice la barra central para comparar antes y después.</li>
+<li>Abrir el reporte PDF y, si existen, las imagenes exportadas desde H2.</li>
+<li>En el enlace <strong>Visualizacion</strong> del PDF, abrir el
+<a href="https://acr-dashboard-5iqz.onrender.com/">Dashboard ACR</a> de monitoreo de deforestacion.</li>
 <li>Contrastar con el mapa de ubicación (ACR, zona de influencia y punto de alerta).</li>
 </ol>
 
@@ -999,7 +1219,10 @@ def _update_fc_params(parameters, gdb_idx, fc_indices):
 # ═══════════════════════════════════════════════════════════════════
 class Toolbox(object):
     def __init__(self):
-        self.label = f"Reporte ATD v{__version__} - GFP Subnacional"
+        self.label = (
+            "Geo Presentación 3 — Elaboración de reportes "
+            "de deforestación en ACR"
+        )
         self.alias = "ReporteATD_v7"
         self.description = (
             "Reportes PDF ATD Loreto / Cuzco / San Martin. "
@@ -1016,7 +1239,8 @@ class DiagnosticoPreVuelo(object):
     def __init__(self):
         self.label = "1. Diagnostico Pre-Vuelo"
         self.description = (
-            "Resume alertas ACR (antropicas y naturales) en el periodo."
+            "Resume alertas ACR antropicas y naturales del periodo "
+            "(excluye solo falsa alerta)."
         )
         self.canRunInBackground = False
 
@@ -1041,8 +1265,8 @@ class DiagnosticoPreVuelo(object):
             direction="Input",
         )
         p1.filter.type = "ValueList"
-        p1.filter.list = ["MonitoreoDeforestacionAcumulado"]
-        p1.value = "MonitoreoDeforestacionAcumulado"
+        p1.filter.list = ["MonitoreoDeforestacion"]
+        p1.value = "MonitoreoDeforestacion"
 
         _hoy = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         p2 = arcpy.Parameter(
@@ -1151,7 +1375,7 @@ class DiagnosticoPreVuelo(object):
 class GenerarReporteATD(object):
 
     def __init__(self):
-        self.label = "2. Generar Reporte ATD por Alerta"
+        self.label = "2. Elaboración de reportes de deforestación en ACR"
         self.description = (
             "Genera el PDF oficial por alerta (mapa ESRI, Sentinel-2 opcional, tablas). "
             "Seleccione la GDB (Loreto / Cuzco / San Martin): ACRs y capas se cargan solas. "
@@ -1197,7 +1421,7 @@ class GenerarReporteATD(object):
             p0.value = _gdb_def
 
         p1 = arcpy.Parameter(
-            displayName="Capa de alertas",
+            displayName="Capa de alertas (usa la seleccion del mapa)",
             name="fc_alertas",
             datatype="GPString",
             parameterType="Required",
@@ -1205,8 +1429,8 @@ class GenerarReporteATD(object):
             category=C,
         )
         p1.filter.type = "ValueList"
-        p1.filter.list = ["MonitoreoDeforestacionAcumulado"]
-        p1.value = "MonitoreoDeforestacionAcumulado"
+        p1.filter.list = ["MonitoreoDeforestacion"]
+        p1.value = "MonitoreoDeforestacion"
 
         p2 = arcpy.Parameter(
             displayName="Capa ACR (gpo_anp_monit)",
@@ -1433,9 +1657,33 @@ class GenerarReporteATD(object):
                     acr_f,
                 )
                 if opts:
+                    oids_mapa = _oids_seleccion_mapa(
+                        parameters[ix["fc_alertas"]].valueAsText
+                    )
+                    opt_mapa = _etiqueta_seleccion_mapa(oids_mapa, opts)
+                    if opt_mapa:
+                        opts = [opt_mapa] + [
+                            o for o in opts
+                            if not str(o).startswith("[SELECCION MAPA]")
+                        ]
                     parameters[ix["alerta_sel"]].filter.list = opts
                     cur = parameters[ix["alerta_sel"]].valueAsText or ""
-                    if cur not in opts:
+                    auto_mapa = bool(
+                        opt_mapa
+                        and (
+                            cur not in opts
+                            or cur.startswith("[Paso 1]")
+                            or cur.startswith("[SIN")
+                            or cur.startswith("[SELECCION MAPA]")
+                            or (
+                                cur.upper().startswith("[TODAS]")
+                                and not parameters[ix["alerta_sel"]].altered
+                            )
+                        )
+                    )
+                    if auto_mapa:
+                        parameters[ix["alerta_sel"]].value = opt_mapa
+                    elif cur not in opts:
                         parameters[ix["alerta_sel"]].value = opts[0]
             except Exception:
                 fallback = [
@@ -1458,6 +1706,22 @@ class GenerarReporteATD(object):
                 parameters[ix["alerta_sel"]].setErrorMessage(
                     "Primero ejecute la herramienta "
                     "'1. Diagnostico Pre-Vuelo' (mismas GDB y fechas)."
+                )
+            except Exception:
+                pass
+        elif alerta.startswith("[SELECCION MAPA]"):
+            try:
+                oids_m = _oids_desde_texto_alerta(alerta)
+                if len(oids_m) == 1:
+                    parameters[ix["alerta_sel"]].setMessage(
+                        f"Se usara el poligono seleccionado en el mapa (OID {oids_m[0]})."
+                    )
+                elif oids_m:
+                    parameters[ix["alerta_sel"]].setMessage(
+                        f"Se usaran {len(oids_m)} poligonos seleccionados en el mapa."
+                    )
+                parameters[ix["fc_alertas"]].setMessage(
+                    "Seleccion del mapa detectada. El PDF sale solo para esos poligonos."
                 )
             except Exception:
                 pass
@@ -1497,6 +1761,40 @@ class GenerarReporteATD(object):
                 f"  Periodo desde Diagnostico Pre-Vuelo: {FECHA_INI_REPORTE} - {FECHA_FIN_REPORTE}"
             )
         ALERTA_SEL = parameters[ix["alerta_sel"]].valueAsText or ""
+        oids_mapa_run = _oids_seleccion_mapa(FC_ALERTAS)
+        if str(ALERTA_SEL).upper().startswith("[SELECCION"):
+            if oids_mapa_run:
+                ALERTA_SEL = _etiqueta_seleccion_mapa(oids_mapa_run, [ALERTA_SEL])
+                arcpy.AddMessage(
+                    f"  Seleccion del mapa: {len(oids_mapa_run)} poligono(s) "
+                    f"(OID {', '.join(str(x) for x in oids_mapa_run[:12])}"
+                    f"{'...' if len(oids_mapa_run) > 12 else ''})"
+                )
+            else:
+                oids_txt = _oids_desde_texto_alerta(ALERTA_SEL)
+                if oids_txt:
+                    arcpy.AddMessage(
+                        "  Seleccion del mapa (OID en el parametro; el subproceso "
+                        f"no ve el mapa): {', '.join(str(x) for x in oids_txt[:12])}"
+                    )
+                else:
+                    arcpy.AddError(
+                        "Elegiste 'SELECCION MAPA' pero no hay poligonos seleccionados "
+                        f"en la capa '{FC_ALERTAS}'. Selecciona la alerta en el mapa "
+                        "(tabla o clic) y vuelve a correr."
+                    )
+                    return
+        elif (
+            oids_mapa_run
+            and str(ALERTA_SEL).upper().startswith("[TODAS]")
+            and not parameters[ix["alerta_sel"]].altered
+        ):
+            ALERTA_SEL = _etiqueta_seleccion_mapa(oids_mapa_run, [ALERTA_SEL])
+            arcpy.AddMessage(
+                f"  Seleccion del mapa detectada: se reporta OID "
+                f"{', '.join(str(x) for x in oids_mapa_run[:12])} "
+                "(no las 247). Si quieres todas, elige [TODAS] en el desplegable."
+            )
         MODO_ESTABLE = bool(
             parameters[ix["modo_estable"]].value
             if parameters[ix["modo_estable"]].value is not None
@@ -1562,15 +1860,10 @@ class GenerarReporteATD(object):
                 arcpy.AddMessage(f"    GORE -> {os.path.basename(_g)}")
             if os.path.isfile(_gr):
                 arcpy.AddMessage(f"    Gerencia -> {os.path.basename(_gr)}")
-            _faltan = listar_logos_faltantes(
-                DIR_LOGOS, _rk_logos, list(ACR_NOMBRES.keys()))
+            _faltan = listar_logos_faltantes(DIR_LOGOS, _rk_logos, [])
             if _faltan:
-                arcpy.AddWarning(
-                    "  Logos ACR/GORE pendientes: " + ", ".join(_faltan)
-                )
-            else:
                 arcpy.AddMessage(
-                    f"  Logos ACR ({len(ACR_NOMBRES)}): todos resueltos"
+                    "  Logos institucionales: " + ", ".join(_faltan)
                 )
         except Exception:
             pass
@@ -1790,7 +2083,7 @@ class GenerarReporteATD(object):
         arcpy.AddMessage(f"CARGANDO ALERTAS  {FECHA_INI_REPORTE} -> {FECHA_FIN_REPORTE}")
         arcpy.AddMessage("=" * 65)
 
-        oid_sel = parse_seleccion_alerta(ALERTA_SEL)
+        oid_sel = _oid_sel_desde_alerta(ALERTA_SEL)
         if oid_sel == "sin_alertas":
             arcpy.AddError(
                 "No hay alertas en el periodo. Ejecute '1. Diagnostico Pre-Vuelo' "
@@ -1799,7 +2092,17 @@ class GenerarReporteATD(object):
             return
 
         try:
-            if isinstance(oid_sel, int):
+            if isinstance(oid_sel, list):
+                arcpy.AddMessage(
+                    f"  Modo rapido: {len(oid_sel)} alertas de la seleccion del mapa"
+                )
+                gdf_una = _leer_alertas_por_oids(
+                    GDB_PATH, FC_ALERTAS, oid_sel, msg_fn=arcpy.AddMessage
+                )
+                df_periodo = _aplicar_filtros_acr_periodo(
+                    gdf_una, FECHA_INI_REPORTE, FECHA_FIN_REPORTE
+                )
+            elif isinstance(oid_sel, int):
                 arcpy.AddMessage(f"  Modo rapido: 1 alerta por OBJECTID={oid_sel}")
                 gdf_una = _leer_alerta_por_oid(
                     GDB_PATH, FC_ALERTAS, oid_sel, msg_fn=arcpy.AddMessage
@@ -1820,6 +2123,43 @@ class GenerarReporteATD(object):
             return
 
         df_periodo = enriquecer_alertas(df_periodo, modo_ligero=MODO_ESTABLE)
+        try:
+            from atd_superficie import actualizar_md_sup, leer_ha_geodesica
+            oids_ha = (
+                oid_sel if isinstance(oid_sel, list)
+                else ([oid_sel] if isinstance(oid_sel, int) else None)
+            )
+            where_ha = None
+            if oids_ha:
+                oid_nom = arcpy.Describe(FC_ALERTAS).OIDFieldName
+                if len(oids_ha) == 1:
+                    where_ha = f"{oid_nom} = {int(oids_ha[0])}"
+                else:
+                    where_ha = (
+                        f"{oid_nom} IN ({','.join(str(int(x)) for x in oids_ha)})"
+                    )
+            try:
+                actualizar_md_sup(FC_ALERTAS, where_ha)
+            except Exception:
+                pass
+            ha_mem = leer_ha_geodesica(FC_ALERTAS, where_ha)
+            if ha_mem and "objectid" in df_periodo.columns:
+                df_periodo = df_periodo.copy()
+
+                def _ha_row(oid, actual):
+                    try:
+                        return ha_mem.get(int(oid), actual)
+                    except (TypeError, ValueError):
+                        return actual
+
+                df_periodo["md_sup"] = [
+                    _ha_row(o, a)
+                    for o, a in zip(
+                        df_periodo["objectid"], df_periodo["md_sup"]
+                    )
+                ]
+        except Exception:
+            pass
 
         acr_gdf, zi_gdf, zonif_gdf = None, None, None
         if not MODO_ESTABLE:
@@ -1843,10 +2183,13 @@ class GenerarReporteATD(object):
             )
             try:
                 df_periodo = enriquecer_ubicacion_alertas(
-                    df_periodo, zonif_gdf=zonif_gdf, gdb_gestion=gdb_gestion
+                    df_periodo,
+                    zonif_gdf=zonif_gdf,
+                    gdb_gestion=gdb_gestion,
+                    gdb_linea=GDB_PATH,
                 )
                 arcpy.AddMessage(
-                    "  Ubicacion (gestion/zonif): lugar poblado, sector y OLV cercano"
+                    "  Ubicacion: lugar poblado, sector (gpo_sectores) y OLV cercano"
                 )
             except Exception as eu:
                 arcpy.AddWarning(f"No se pudo enriquecer ubicacion: {eu}")
@@ -1854,6 +2197,19 @@ class GenerarReporteATD(object):
             df_periodo["lugar_poblado"] = "-"
             df_periodo["sector_reporte"] = "-"
             df_periodo["olv_cercano"] = "-"
+
+        # md_sector de H1 tiene prioridad si sector_reporte quedó vacío/nan
+        if "md_sector" in df_periodo.columns:
+            from atd_region_config import _valor_util
+            if "sector_reporte" not in df_periodo.columns:
+                df_periodo["sector_reporte"] = "-"
+            for ix, val in df_periodo["md_sector"].items():
+                sec = _valor_util(val)
+                if not sec:
+                    continue
+                actual = str(df_periodo.at[ix, "sector_reporte"] or "")
+                if actual.strip().lower() in ("-", "", "nan", "none"):
+                    df_periodo.at[ix, "sector_reporte"] = sec
 
         # Resumen por ACR
         arcpy.AddMessage("")
@@ -1864,6 +2220,8 @@ class GenerarReporteATD(object):
             arcpy.AddMessage(f"  {cod:<8} {nom:<42} {n:>5,} {ha:>10.4f}{flag}")
 
         alertas_para_reporte = df_periodo.copy()
+        alertas_para_reporte = enrich_dataframe_codigos(
+            alertas_para_reporte, anno_fallback=ANNO_REPORTE)
         arcpy.AddMessage(f"\nOK {len(alertas_para_reporte):,} alertas listas")
 
         if ACR_FILTRO and ACR_FILTRO in ACR_CODIGOS_FC:
@@ -1872,7 +2230,7 @@ class GenerarReporteATD(object):
             ].copy()
             arcpy.AddMessage(f"  Filtro ACR {ACR_FILTRO}: {len(alertas_para_reporte)} alertas")
 
-        oid_sel = parse_seleccion_alerta(ALERTA_SEL)
+        oid_sel = _oid_sel_desde_alerta(ALERTA_SEL)
         if oid_sel == "sin_alertas":
             arcpy.AddError(
                 "No hay alertas en el periodo. Ejecute '1. Diagnostico Pre-Vuelo' "
@@ -1899,6 +2257,21 @@ class GenerarReporteATD(object):
                     "Ejecute Diagnostico Pre-Vuelo y elija una con OID visible."
                 )
                 return
+        elif isinstance(oid_sel, list):
+            if "objectid" not in alertas_para_reporte.columns:
+                alertas_para_reporte = normalize_oid_column(alertas_para_reporte)
+            df_procesar = alertas_para_reporte[
+                alertas_para_reporte["objectid"].astype(int).isin(oid_sel)
+            ].copy()
+            if len(df_procesar) == 0:
+                arcpy.AddError(
+                    f"No se encontraron las alertas seleccionadas (OID={oid_sel}) "
+                    "tras filtros de periodo/ACR."
+                )
+                return
+            arcpy.AddMessage(
+                f"  Modo: seleccion del mapa ({len(df_procesar)} alertas)"
+            )
         elif isinstance(oid_sel, int):
             if "objectid" not in alertas_para_reporte.columns:
                 alertas_para_reporte = normalize_oid_column(alertas_para_reporte)
@@ -1937,24 +2310,23 @@ class GenerarReporteATD(object):
         # ══════════════════════════════════════════════════════════
         # FUNCIONES GEE — igual a Celda 3
         # ══════════════════════════════════════════════════════════
-        def bbox_wgs(geom_wgs, buffer_m=600):
+        def bbox_wgs(geom_wgs, buffer_m=500):
             gdf = gpd.GeoDataFrame(geometry=[geom_wgs], crs="EPSG:4326").to_crs(
                 f"EPSG:{EPSG_MAPA}")
             gdf["geometry"] = gdf.geometry.buffer(buffer_m)
             return gdf.to_crs("EPSG:4326").total_bounds
 
-        def marcar_alerta_en_imagen(arr_rgb, bounds_utm, cent_x, cent_y):
-            """Dibuja círculo rojo en posición de alerta sobre imagen Sentinel."""
-            pil  = PILImage.fromarray(arr_rgb)
-            draw = ImageDraw.Draw(pil)
-            xmin, xmax, ymin, ymax = bounds_utm
-            w, h = pil.size
-            px = (cent_x - xmin) / (xmax - xmin) * w
-            py = (ymax  - cent_y) / (ymax  - ymin) * h
-            r  = max(14, int(min(w, h) * 0.06))
-            draw.ellipse([px-r-2, py-r-2, px+r+2, py+r+2], outline="white", width=2)
-            draw.ellipse([px-r,   py-r,   px+r,   py+r  ], outline="red",   width=3)
-            return np.array(pil)
+        def marcar_alerta_en_imagen(arr_rgb, bounds_mapa, geom_wgs):
+            """Zoom al centroide + contorno rojo del poligono (sin relleno)."""
+            return aplicar_vector_y_zoom(
+                arr_rgb,
+                bounds_mapa,
+                geom_wgs,
+                epsg_bounds=EPSG_MAPA,
+                epsg_geom=_epsg_geom_auto(geom_wgs, 4326),
+                estilo="poligono",
+                zoom=True,
+            )
 
         def descargar_sentinel2(geom_wgs, fecha_ref_str, tipo="antes", dias=45, max_nubes=35):
             """Descarga Sentinel-2 SR. Retorna (arr, bounds_utm, fecha, nubes, id) o None."""
@@ -1970,7 +2342,7 @@ class GenerarReporteATD(object):
                     fi_s = fd.strftime("%Y-%m-%d")
                     ff_s = (fd + timedelta(days=dias)).strftime("%Y-%m-%d")
 
-                b   = bbox_wgs(geom_wgs, buffer_m=600)
+                b   = bbox_wgs(geom_wgs, buffer_m=500)
                 roi = ee.Geometry.Rectangle([b[0], b[1], b[2], b[3]])
 
                 col = (ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
@@ -2153,9 +2525,11 @@ class GenerarReporteATD(object):
                        arrowprops=dict(arrowstyle="->", color="white", lw=1.8), zorder=12)
 
             sup   = alerta_row.get("md_sup", 0) or 0
-            causa = alerta_row.get("causa_texto", "-")
+            causa = texto_actividad(
+                alerta_row.get("causa_texto"), alerta_row.get("_causa_int")
+            )
             ax.set_title(
-                f"{nombre}\nAlerta #{idx_alerta+1}/{total_alertas} — {causa} | {sup:.4f} ha",
+                f"{nombre}\nAlerta #{idx_alerta+1}/{total_alertas} — {causa} | {sup:.2f} ha",
                 fontsize=6, fontweight="bold", color="white", pad=3,
                 path_effects=[pe.withStroke(linewidth=1.2, foreground="black")]
             )
@@ -2300,7 +2674,7 @@ class GenerarReporteATD(object):
             textos_cortos = {
                 "Metodología:": "Abrir metodología (documento HTML)",
                 "Procedimiento:": "Abrir guía de fotointerpretación",
-                "Visualización:": "Abrir comparación swipe (imágenes del visor H2)",
+                "Visualización:": "Abrir Dashboard ACR (monitoreo deforestación)",
             }
             datos = []
             for l, url in filas_link:
@@ -2344,7 +2718,10 @@ class GenerarReporteATD(object):
             cod_acr     = str(alerta_row.get("anp_codi", "SIN")).strip()
             sigla       = alerta_row.get("acr_sigla",  cod_acr)
             nombre_acr  = alerta_row.get("acr_nombre", cod_acr)
-            causa       = alerta_row.get("causa_texto",  "Sin clasificar")
+            causa       = texto_actividad(
+                alerta_row.get("causa_texto"), alerta_row.get("_causa_int")
+            )
+            efecto      = texto_efecto(alerta_row.get("efecto_texto"))
             bosque      = alerta_row.get("bosque_texto", "-")
             confianza   = alerta_row.get("conf_texto",   "-")
             zonif       = str(alerta_row.get("md_zonif",  "") or "-")
@@ -2364,13 +2741,23 @@ class GenerarReporteATD(object):
                 except Exception: fecha_str = str(fecha_val)
 
             fecha_emision = pd.Timestamp.today().strftime("%d/%m/%Y")
-            cod_reporte   = f"RT-ATD-ACR-{sigla}-{ANNO_REPORTE}-{idx+1:04d}"
+            cod_reporte = str(
+                alerta_row.get("codigo_alerta")
+                or alerta_row.get("md_codigo")
+                or resolver_codigo_alerta(
+                    alerta_row, anno_fallback=ANNO_REPORTE)
+            )
             geo           = ACR_GEO.get(cod_acr, {})
             provincia     = geo.get("provincia", "-")
             distrito      = geo.get("distrito",  "-")
-            lugar_poblado = str(alerta_row.get("lugar_poblado", "") or "-")
-            sector_rep    = str(alerta_row.get("sector_reporte", "") or "-")
-            olv_cercano   = str(alerta_row.get("olv_cercano", "") or "-")
+            from atd_region_config import _texto_reporte
+            lugar_poblado = _texto_reporte(alerta_row.get("lugar_poblado"))
+            sector_rep = _texto_reporte(
+                alerta_row.get("sector_reporte")
+                or alerta_row.get("md_sector")
+            )
+            olv_cercano = _texto_reporte(alerta_row.get("olv_cercano"))
+            geom_alerta = geom_a_wgs84(alerta_row.geometry, EPSG_MAPA)
 
             # Preparar imágenes Sentinel (con marca de alerta)
             def _cargar_local_h3(sufijo):
@@ -2395,16 +2782,41 @@ class GenerarReporteATD(object):
                             fecha_local = fecha_raw
                     id_local = str(meta.get("id", "") or "-")
                     sat_local = str(meta.get("sat", "") or sat_local)
+                ruta_marcada = marcar_png_con_alerta(
+                    ruta_png, geom_alerta, meta=meta,
+                    epsg_utm=EPSG_MAPA, estilo="poligono")
+                if (ruta_marcada == ruta_png and geom_alerta is not None
+                        and not os.path.basename(ruta_png).endswith("_vec.png")):
+                    try:
+                        from PIL import Image
+                        import numpy as np
+                        bnds, epsg_b = bounds_imagen_desde_meta(
+                            meta, geom_alerta, EPSG_MAPA)
+                        if bnds:
+                            arr = np.array(Image.open(ruta_png).convert("RGB"))
+                            arr_m = aplicar_vector_y_zoom(
+                                arr, bnds, geom_alerta,
+                                epsg_bounds=epsg_b,
+                                epsg_geom=_epsg_geom_auto(geom_alerta, EPSG_MAPA),
+                                estilo="poligono", zoom=True)
+                            tmp_vec = os.path.join(
+                                DIR_IMAGENES,
+                                f"_tmp_vec_{oid}_{sufijo}.png")
+                            Image.fromarray(arr_m).save(
+                                tmp_vec, format="PNG", optimize=True)
+                            ruta_marcada = tmp_vec
+                    except Exception:
+                        pass
                 arcpy.AddMessage(
-                    f"  Img {sufijo} desde archivo: {os.path.basename(ruta_png)}"
+                    f"  Img {sufijo} desde archivo: {os.path.basename(ruta_marcada)}"
                 )
-                return ruta_png, fecha_local, id_local, sat_local
+                return ruta_marcada, fecha_local, id_local, sat_local
 
             def prep_s2(img_tuple, sufijo):
                 if img_tuple is None:
                     return None, "-", "-"
                 arr, bounds, fecha_img, nubes, id_img = img_tuple
-                arr_m = marcar_alerta_en_imagen(arr, bounds, este_utm, norte_utm)
+                arr_m = marcar_alerta_en_imagen(arr, bounds, geom_alerta)
                 ruta  = os.path.join(DIR_IMAGENES, f"S2_{sufijo}_{cod_acr}_{idx+1:03d}.png")
                 pil = PILImage.fromarray(arr_m)
                 try:
@@ -2722,8 +3134,8 @@ class GenerarReporteATD(object):
             ], WA, WB)
 
             t_s4 = tabla_sec("4", "Datos de Afectación", [
-                ("Causa:", causa),
-                ("Efecto:", "Pérdida de Hábitat"),
+                ("Actividad:", causa),
+                ("Efecto:", efecto),
                 ("Tipo de Bosque:", bosque),
                 ("Superficie Afectada (ha):", f"{superficie:.2f}"),
                 ("Código de Grilla:", grilla),
@@ -2747,7 +3159,7 @@ class GenerarReporteATD(object):
             t_s6 = tabla_sec_link("6", "Datos de Elaboración", [
                 ("Metodología:", LINK_METODOLOGIA),
                 ("Procedimiento:", LINK_PROCEDIMIENTO),
-                ("Visualización:", LINK_VISUALIZACION),
+                ("Visualización:", URL_DASHBOARD_ACR),
             ], WA, WB)
 
             t_56 = Table([[t_s5, t_s6]], colWidths=[WA + WB + 0.3 * cm, WA + WB + 0.3 * cm])
@@ -2847,7 +3259,8 @@ class GenerarReporteATD(object):
                     )
                 if (not hay_local) and HAS_GEE and DESCARGAR_GEE and pd.notna(fecha):
                     fecha_ref = pd.to_datetime(fecha).strftime("%Y-%m-%d")
-                    geom_alerta = alertas_para_reporte.loc[i_row].geometry
+                    geom_alerta = geom_a_wgs84(
+                        alertas_para_reporte.loc[i_row].geometry, EPSG_MAPA)
                     arcpy.AddMessage(
                         f"  -> S2 ANTES  (ventana {GEE_DIAS_BUSQUEDA}d, max {GEE_MAX_NUBES}% nubes)..."
                     )

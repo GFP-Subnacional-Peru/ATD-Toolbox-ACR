@@ -170,7 +170,9 @@ def generar_pdf_atd(job):
     cod_acr = str(a.get("anp_codi", "SIN")).strip()
     sigla = a.get("acr_sigla", cod_acr)
     nombre_acr = a.get("acr_nombre", cod_acr)
-    causa = a.get("causa_texto", "Sin clasificar")
+    from atd_arcpy_io import texto_actividad, texto_efecto
+    causa = texto_actividad(a.get("causa_texto"), a.get("_causa_int"))
+    efecto = texto_efecto(a.get("efecto_texto"))
     bosque = a.get("bosque_texto", "-")
     confianza = a.get("conf_texto", "-")
     zonif = str(a.get("md_zonif", "") or "-")
@@ -197,8 +199,12 @@ def generar_pdf_atd(job):
     DIR_LOGOS = cfg["dir_logos"]
     RK_LOGOS = cfg.get("region_key", "loreto")
     mapa_path = job.get("mapa_path")
+    ruta_a = job.get("ruta_a") or job.get("img_a")
+    ruta_d = job.get("ruta_d") or job.get("img_d")
     fecha_a = links.get("fecha_a", "-")
     fecha_d = links.get("fecha_d", "-")
+    sat_a = links.get("sat_a", "Imagen satelital")
+    sat_d = links.get("sat_d", "Imagen satelital")
     url_eo = links.get("url_eo", "https://apps.sentinel-hub.com/eo-browser/")
     url_gee = links.get("url_gee", "https://earth.google.com/web/")
     from atd_region_config import URL_DASHBOARD_ACR
@@ -338,7 +344,7 @@ def generar_pdf_atd(job):
     story.append(Spacer(1, 0.3 * mm))
 
     AW = W / 2
-    AH = 3.15 * cm
+    AH = 4.2 * cm
 
     def cab_img(texto):
         t = Table([[_s(texto, bold=True, tam=7.5, color=C_BLANCO, align=TA_CENTER)]],
@@ -353,9 +359,13 @@ def generar_pdf_atd(job):
     t_s2imgs = Table([
         [cab_img("Imagen A — antes del cambio"),
          cab_img("Imagen B — con el cambio detectado")],
-        [celda_centro(img_rl(None, AW, AH, "Sin imagen A"), AW, AH),
-         celda_centro(img_rl(None, AW, AH, "Sin imagen B"), AW, AH)],
-    ], colWidths=[AW, AW], rowHeights=[None, AH + 2 * mm])
+        [celda_centro(img_rl(ruta_a, AW, AH, "Sin imagen A"), AW, AH),
+         celda_centro(img_rl(ruta_d, AW, AH, "Sin imagen B"), AW, AH)],
+        [
+            _s(f"{sat_a}  ·  {fecha_a}", tam=6, align=TA_CENTER, color=C_AZUL_GFP),
+            _s(f"{sat_d}  ·  {fecha_d}", tam=6, align=TA_CENTER, color=C_AZUL_GFP),
+        ],
+    ], colWidths=[AW, AW], rowHeights=[None, AH + 2 * mm, None])
     t_s2imgs.setStyle(TableStyle([
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
         ("BOX", (0, 0), (-1, -1), 1.2, C_BORDE_EXT),
@@ -372,8 +382,8 @@ def generar_pdf_atd(job):
         ("Coordenada Norte (m):", f"{float(norte):,.1f}" if norte else "-"),
     ], WA, WB)
     t_s4 = tabla_sec("4", "Datos de Afectacion", [
-        ("Causa:", causa),
-        ("Efecto:", "Perdida de Habitat"),
+        ("Actividad:", causa),
+        ("Efecto:", efecto),
         ("Tipo de Bosque:", bosque),
         ("Superficie Afectada (ha):", f"{superficie:.2f}"),
         ("Codigo de Grilla:", grilla),
