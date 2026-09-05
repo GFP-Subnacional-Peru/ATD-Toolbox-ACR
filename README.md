@@ -14,8 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="https://favio138-hub.github.io/ATD-Toolbox-ACR/docs/GUIA_VISUAL.html"><strong>Abrir guía visual completa (capturas H1 · H2 · H3)</strong></a><br/>
-  <a href="https://favio138-hub.github.io/ATD-Toolbox-ACR/INDICE.html">Índice HTML</a> ·
+  <a href="https://gfp-subnacional-peru.github.io/ATD-Toolbox-ACR/docs/GUIA_VISUAL.html"><strong>Abrir guía visual completa (capturas H1 · H2 · H3)</strong></a><br/>
+  <a href="https://gfp-subnacional-peru.github.io/ATD-Toolbox-ACR/INDICE.html">Índice HTML</a> ·
   <a href="INDICE.html">Índice local</a>
 </p>
 
