@@ -51,6 +51,8 @@ REGION_CONFIGS = {
         ],
         "anp_codi_aliases": {
             "ACR18": "ACR34",
+            "ACR 18": "ACR34",
+            "18": "ACR34",
         },
         "acr_nomb_to_codi": {
             "Ampiyacu Apayacu": "ACR09",
@@ -440,6 +442,9 @@ def normalizar_anp_codi(cod):
     if not c:
         return ""
     u = c.upper()
+    # MPA: codigo institucional es ACR34 (ACR18 es legacy y no debe persistir)
+    if u.replace(" ", "") == "ACR18" or re.fullmatch(r"ACR\s*0*18", u):
+        return "ACR34"
     if u in ACR_NOMBRES:
         return u
     if u in ZI_CODI_TO_ACR:
@@ -448,6 +453,8 @@ def normalizar_anp_codi(cod):
     if alias:
         return alias
     n = normalizar_cod_acr(c)
+    if n == "ACR18":
+        return "ACR34"
     if n in ACR_NOMBRES:
         return n
     if c in ACR_NOMB_TO_CODI:
