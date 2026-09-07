@@ -5,8 +5,10 @@ regiones/*/mapas/**
 regiones/*/documentacion_atd/**
 regiones/*/docs/*.pdf
 regiones/*/docs/*.{png,jpg,jpeg,gif,webp}
-docs/guia/*.{png,jpg,jpeg,gif,webp}
-docs/*.{png,jpg,jpeg,gif,webp,pdf}
+
+# Sin PDF/reportes demo en docs (sí se permiten capturas livianas de toolbox en docs/guia/)
+docs/*.pdf
+docs/*.{png,jpg,jpeg,gif,webp}
 
 **/__pycache__/
 **/*.pyc

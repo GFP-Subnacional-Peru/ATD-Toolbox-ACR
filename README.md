@@ -21,6 +21,7 @@
 <p align="center">
   <a href="#para-quién-es">Para quién es</a> ·
   <a href="#cómo-trabajar-en-3-pasos">Cómo trabajar</a> ·
+  <a href="#así-se-ven-las-herramientas-por-dentro">Vista del toolbox</a> ·
   <a href="#demo-5-minutos">Demo 5 minutos</a> ·
   <a href="#las-tres-regiones">Las 3 regiones</a> ·
   <a href="#inicio-rápido">Inicio rápido</a>
@@ -51,8 +52,24 @@ No necesita ser programador: solo **ArcGIS Pro 3.x** y seguir la guía HTML de *
   <strong>Geobosques → H1 → H2 → H3 → PDF en <code>pdfs/</code> (local)</strong>
 </p>
 
-> Este repositorio **no** incluye reportes PDF ni capturas de ejemplo.  
-> Cada especialista genera sus propios PDF e imágenes satelitales en su PC.
+### Así se ven las herramientas (por dentro)
+
+<p align="center">
+  <img src="docs/guia/guia_h1_descarga_geobosques.png" alt="H1 — parámetros en ArcGIS Pro" width="520" />
+</p>
+<p align="center"><em>H1 — Descarga Geobosques (panel de geoprocesamiento)</em></p>
+
+<p align="center">
+  <img src="docs/guia/guia_h2_visor_antes_despues.png" alt="H2 — visor satelital antes/después" width="720" />
+</p>
+<p align="center"><em>H2 — Visor satelital (ANTES / DESPUÉS)</em></p>
+
+<p align="center">
+  <img src="docs/guia/guia_h2_visor_detalle.png" alt="H2 — detalle zoom sincronizado" width="720" />
+</p>
+<p align="center"><em>H2 — Zoom sincronizado para fotointerpretar</em></p>
+
+> Los **PDF del reporte** los genera usted con H3 en su PC (`pdfs/`). No vienen listos en el repo.
 
 ---
 
