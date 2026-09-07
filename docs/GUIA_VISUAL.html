@@ -126,8 +126,7 @@
   <h2><span class="badge">H1</span> Descargar alertas (Geobosques)</h2>
   <p>En ArcGIS Pro abra la herramienta <strong>Descarga automatizada de Alertas Tempranas de Deforestación</strong>.
   Elija la GDB de su región, el año y el periodo. El resto de capas suele venir ya configurado.</p>
-  <img class="shot" src="guia/guia_h1_descarga_geobosques.png" alt="Herramienta H1 — parámetros de descarga Geobosques en ArcGIS Pro" />
-  <p class="caption">Figura 1. Herramienta H1 en ArcGIS Pro (parámetros). Igual en las tres regiones.</p>
+  <div class="note">Sin capturas en el repo: use la herramienta H1 directamente en ArcGIS Pro.</div>
   <h3>Qué debe hacer usted</h3>
   <ol class="pasos">
     <li>Abrir la carpeta de <strong>su región</strong> en ArcGIS Pro</li>
@@ -142,10 +141,7 @@
   <h2><span class="badge h2">H2</span> Fotointerpretar (visor satelital)</h2>
   <p>El visor GFP permite marcar una escena <strong>ANTES</strong> y otra <strong>DESPUÉS</strong>.
   Al tener ambas, carga la comparación automáticamente. Sirve para decidir si la alerta es antrópica, natural o falsa alerta.</p>
-  <img class="shot" src="guia/guia_h2_visor_antes_despues.png" alt="Visor satelital H2 — comparación antes y después" />
-  <p class="caption">Figura 2. Visor H2 — comparación ANTES / DESPUÉS con la alerta marcada en rojo.</p>
-  <img class="shot" src="guia/guia_h2_visor_detalle.png" alt="Visor satelital H2 — detalle de zoom sincronizado" />
-  <p class="caption">Figura 3. Mismo visor con zoom sincronizado para revisar el cambio con detalle.</p>
+  <div class="note">Las imágenes satelitales se descargan/exportan en su PC (<code>imagenes_sentinel/</code>), no vienen en GitHub.</div>
   <h3>Qué debe hacer usted</h3>
   <ol class="pasos">
     <li>Seleccionar la alerta en el mapa</li>
@@ -160,8 +156,6 @@
   <h2><span class="badge h3">H3</span> Generar el reporte PDF</h2>
   <p>El resultado final es el <strong>Reporte Técnico sobre Alerta Temprana de Deforestación</strong>:
   ubicación, mapa, imágenes satelitales, datos de afectación y logos institucionales.</p>
-  <img class="shot" src="guia/guia_h3_reporte_pdf.png" alt="Ejemplo de reporte PDF ATD generado con H3" />
-  <p class="caption">Figura 4. Ejemplo de reporte PDF institucional (salida de H3). Mismo formato en las tres regiones; cambian logos y datos de la ACR.</p>
   <h3>Qué debe hacer usted</h3>
   <ol class="pasos">
     <li>Ejecutar <strong>Diagnóstico Pre-Vuelo</strong> (valida logos y entorno)</li>
@@ -169,8 +163,8 @@
     <li>El PDF se guarda en la carpeta <code>pdfs/</code> de su región</li>
   </ol>
   <div class="note">
-    Los PDF que usted genere en <code>pdfs/</code> son <strong>resultados de trabajo</strong> y
-    <strong>no se suben a GitHub</strong>. En el repositorio solo hay un PDF de ejemplo por región (en <code>docs/</code>).
+    Los PDF e imágenes que usted genere son <strong>resultados de trabajo local</strong> y
+    <strong>no se suben a GitHub</strong>. El repositorio solo trae toolbox, GDB, logos y guías HTML.
   </div>
 </section>
 
@@ -219,8 +213,8 @@
     <tr><td><strong>Cusco</strong></td><td><code>regiones/ATD_Cuzco/</code></td><td>~67 MB</td></tr>
   </table>
   <div class="ok">
-    Cada carpeta incluye lo necesario para monitorear: herramientas, datos base, logos, guía y un PDF de ejemplo.
-    Los reportes e imágenes que usted genere después se guardan en su equipo y no vienen en la descarga.
+    Cada carpeta incluye lo necesario: toolbox, GDB, logos y guía HTML.
+    Los reportes PDF e imágenes satelitales los genera usted en su PC (no vienen en la descarga).
   </div>
 </section>
 
@@ -230,8 +224,9 @@
     <tr><th>Carpeta</th><th>¿Se sube?</th><th>Para qué</th></tr>
     <tr><td><code>toolbox/</code></td><td>Sí</td><td>Herramientas H1, H2, H3</td></tr>
     <tr><td><code>GDB/</code></td><td>Sí</td><td>Datos base de la región</td></tr>
-    <tr><td><code>logos/</code></td><td>Sí</td><td>Logos del PDF</td></tr>
-    <tr><td><code>guia/</code> y <code>docs/</code></td><td>Sí</td><td>Guías y un PDF de ejemplo</td></tr>
+    <tr><td><code>logos/</code></td><td>Sí</td><td>Logos institucionales del PDF</td></tr>
+    <tr><td><code>guia/</code></td><td>Sí</td><td>Guías HTML</td></tr>
+    <tr><td><code>docs/</code> PDF/PNG</td><td><strong>No</strong></td><td>Sin reportes ni capturas de ejemplo</td></tr>
     <tr><td><code>pdfs/</code></td><td><strong>No</strong></td><td>Reportes que usted genere (resultados)</td></tr>
     <tr><td><code>imagenes_sentinel/</code></td><td><strong>No</strong></td><td>Imágenes exportadas del visor</td></tr>
     <tr><td><code>mapas/</code> · <code>documentacion_atd/</code></td><td><strong>No</strong></td><td>Salidas temporales de trabajo</td></tr>

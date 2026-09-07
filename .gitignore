@@ -1,8 +1,13 @@
-# Salidas de trabajo por region
-regiones/*/pdfs/*.pdf
-regiones/*/imagenes_sentinel/*
-regiones/*/mapas/*
-regiones/*/documentacion_atd/*
+# Salidas de trabajo por region (locales; no van a GitHub)
+regiones/*/pdfs/**
+regiones/*/imagenes_sentinel/**
+regiones/*/mapas/**
+regiones/*/documentacion_atd/**
+regiones/*/docs/*.pdf
+regiones/*/docs/*.{png,jpg,jpeg,gif,webp}
+docs/guia/*.{png,jpg,jpeg,gif,webp}
+docs/*.{png,jpg,jpeg,gif,webp,pdf}
+
 **/__pycache__/
 **/*.pyc
 **/*.lock
