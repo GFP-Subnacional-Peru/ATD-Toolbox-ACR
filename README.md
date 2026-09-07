@@ -22,8 +22,8 @@
 <p align="center">
   <a href="#para-quién-es">Para quién es</a> ·
   <a href="#cómo-trabajar-en-3-pasos">Cómo trabajar</a> ·
+  <a href="#demo-5-minutos">Demo 5 minutos</a> ·
   <a href="#las-tres-regiones">Las 3 regiones</a> ·
-  <a href="#ejemplo-del-reporte-pdf">PDF ejemplo</a> ·
   <a href="#inicio-rápido">Inicio rápido</a>
 </p>
 
@@ -67,24 +67,33 @@ No necesita ser programador: solo **ArcGIS Pro 3.x** y seguir la guía de **su**
 <p align="center">
   <img src="docs/guia/guia_h3_reporte_pdf.png" alt="H3 Reporte PDF" width="720" />
 </p>
-<p align="center"><em>H3 — Reporte PDF institucional (resultado final)</em></p>
+<p align="center"><em>H3 — Reporte PDF institucional (mismo formato en las 3 regiones)</em></p>
 
 ---
 
-## Ejemplo del reporte PDF
+## Demo 5 minutos
 
-Reporte real **ACR10 Alto Nanay Pintuyacu Chambira** — alerta `ACR10 - 2026 - 064` (2.21 ha, Saboya).  
-Mismo formato que generará H3 en su región (logos GFP, SECO, Basel y GORE correspondiente).
+Prueba rápida **sin Geobosques** — ideal para taller o exposición. El flujo es **igual** en las tres regiones; solo cambia la carpeta.
 
-<p align="center">
-  <a href="regiones/ATD_Loreto/docs/EJEMPLO_reporte_ATD_Loreto.pdf">
-    <img src="docs/guia/guia_h3_reporte_pdf.png" alt="Ejemplo reporte ATD — ACR10 Alto Nanay" width="820" />
-  </a>
-</p>
+| Paso | Acción | Qué deberías ver |
+|:----:|--------|------------------|
+| 1 | Abrir **solo** `regiones/ATD_<Region>/` en ArcGIS Pro | Carpeta regional intacta |
+| 2 | **Catalog → Add Toolbox** → H1, H2 y H3 en `toolbox/` | Las 3 herramientas en geoprocesamiento |
+| 3 | Agregar al mapa `GDB/…` → `MonitoreoDeforestacion` | Alertas en el mapa |
+| 4 | **H2** → seleccionar **1 polígono** → buscar escenas ANTES/DESPUÉS | Visor satelital GFP |
+| 5 | **H3** → Diagnóstico Pre-Vuelo → Generar Reporte ATD (1 alerta) | PDF en `pdfs/` |
+| 6 | Comparar con el PDF de ejemplo de **su** región en `docs/` | Mismo formato institucional |
 
-<p align="center">
-  <a href="regiones/ATD_Loreto/docs/EJEMPLO_reporte_ATD_Loreto.pdf"><strong>Descargar PDF ejemplo (Alto Nanay · ACR10)</strong></a>
-</p>
+```mermaid
+flowchart LR
+  A[H1 Geobosques] --> B[(MonitoreoDeforestacion)]
+  B --> C[H2 Visor satelital]
+  C --> D[imagenes_sentinel/]
+  D --> E[H3 Reporte PDF]
+  E --> F[pdfs/]
+```
+
+> En el demo corto puede saltar **H1** si la GDB ya tiene alertas. Cada región trae su propio PDF de ejemplo en `docs/` (no hay un “caso único” nacional).
 
 ---
 
@@ -94,18 +103,9 @@ Mismo formato que generará H3 en su región (logos GFP, SECO, Basel y GORE corr
 |--------|-----|---------|------|-------------|
 | **Loreto** | CTT, Ampiyacu, Alto Nanay, Maijuna, MPA, ACM | [`regiones/ATD_Loreto/`](regiones/ATD_Loreto/) | [Guía](regiones/ATD_Loreto/guia/GUIA_ATD_LORETO.html) | [PDF](regiones/ATD_Loreto/docs/EJEMPLO_reporte_ATD_Loreto.pdf) |
 | **San Martín** | Cordillera Escalera (CE), BOSHUMI | [`regiones/ATD_San_Martin/`](regiones/ATD_San_Martin/) | [Guía](regiones/ATD_San_Martin/guia/GUIA_ATD_SAN_MARTIN.html) | [PDF](regiones/ATD_San_Martin/docs/EJEMPLO_reporte_ATD_San_Martin.pdf) |
-| **Cusco** | Choquequirao, Chuyapi Urusayhua, Q'eros Kosñipata | [`regiones/ATD_Cuzco/`](regiones/ATD_Cuzco/) | [Guía](regiones/ATD_Cuzco/guia/GUIA_ATD_CUZCO.html) | [PDF](regiones/ATD_Cuzco/docs/EJEMPLO_reporte_ATD_Cusco.pdf) |
+| **Cusco** | Choquequirao, Chuyapi Urusayhua, Q'eros Kosñipata | [`regiones/ATD_Cuzco/`](regiones/ATD_Cuzco/) | [Guía](regiones/ATD_Cuzco/guia/GUIA_ATD_CUZCO.html) | [PDF](regiones/ATD_Cuzco/docs/EJEMPLO_reporte_ATD_Cuzco.pdf) |
 
 Las tres regiones tienen **toolbox H1–H2–H3** (mismos arreglos 2026), GDB, logos y guía. **No mezclar** GDB ni logos entre GORE.
-
-### Contexto Loreto 2026
-
-<p align="center">
-  <img src="docs/cuadro_causas_deforestacion_loreto_2026.png" alt="Causas de deforestación ACR Loreto 2026" width="700" />
-</p>
-<p align="center">
-  <img src="docs/grafico_alertas_atd_acr_loreto_2026.png" alt="Alertas ATD Loreto 2026" width="700" />
-</p>
 
 ---
 
@@ -115,7 +115,7 @@ Las tres regiones tienen **toolbox H1–H2–H3** (mismos arreglos 2026), GDB, l
 2. Clonar o descargar el repo y abrir **solo** `regiones/ATD_<Region>/` en ArcGIS Pro.
 3. **Catalog → Add Toolbox** → H1, H2 y H3 en `toolbox/`.
 4. Ejecutar `DIAGNOSTICO_ENTORNO.bat` la primera vez.
-5. Seguir la guía HTML de su región.
+5. Seguir la guía HTML de su región o el [demo 5 minutos](#demo-5-minutos).
 
 **Descarga:** el paquete completo pesa ~2,9 GB (geodatabases con Git LFS). Para un taller, puede copiar solo la carpeta de una región por USB.
 

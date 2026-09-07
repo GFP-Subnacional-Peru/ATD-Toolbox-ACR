@@ -58,7 +58,7 @@ Prueba rápida **sin conexión a Geobosques** — ideal para ver el visor y el P
 | 4 | **H2** → misma GDB → `MonitoreoDeforestacion` → seleccionar **1 polígono** en el mapa | Se abre el visor satelital GFP (antes/después) |
 | 5 | En H2: buscar escenas → marcar ANTES y DESPUÉS → exportar (opcional) | Imágenes en `imagenes_sentinel/` |
 | 6 | **H3** → Diagnóstico Pre-Vuelo → Generar Reporte ATD (1 alerta) | PDF en `pdfs/` |
-| 7 | Comparar con [`docs/EJEMPLO_reporte_ATD_Loreto.pdf`](docs/EJEMPLO_reporte_ATD_Loreto.pdf) | Mismo formato institucional (mapa, S2, swipe, logos) |
+| 7 | Comparar con [`docs/EJEMPLO_reporte_ATD_Loreto.pdf`](docs/EJEMPLO_reporte_ATD_Loreto.pdf) | Mismo formato institucional (mapa, imágenes, logos) |
 
 ```mermaid
 flowchart LR
