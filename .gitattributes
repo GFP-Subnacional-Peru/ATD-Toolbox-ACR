@@ -1,2 +1,2 @@
-# Geodatabases ArcGIS (tablas >100 MB en ZEE San Martín)
-*.gdbtable filter=lfs diff=lfs merge=lfs -text
+﻿# GDB se versiona como archivo normal para que Code→Download ZIP traiga datos reales.
+# (GitHub ZIP no descarga Git LFS; archivos <100 MB OK en git normal)

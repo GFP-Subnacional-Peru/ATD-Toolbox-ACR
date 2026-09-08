@@ -121,31 +121,24 @@ Cada región trae: **toolbox H1–H2–H3**, **GDB**, **logos** (para el PDF) y 
 ## Inicio rápido
 
 1. Entrar a [`INDICE.html`](INDICE.html) y elegir **su región**.
-2. **Descargar bien las GDB** (importante — ver abajo).
-3. Abrir **solo** `regiones/ATD_<Region>/` en ArcGIS Pro.
-4. **Catalog → Add Toolbox** → H1, H2 y H3 en `toolbox/`.
-5. Ejecutar `DIAGNOSTICO_ENTORNO.bat` la primera vez.
-6. Seguir la guía HTML de su región.
+2. Descargar el repo (**Code → Download ZIP** o `git clone`) y abrir **solo** `regiones/ATD_<Region>/` en ArcGIS Pro.
+3. **Catalog → Add Toolbox** → H1, H2 y H3 en `toolbox/`.
+4. Ejecutar `DIAGNOSTICO_ENTORNO.bat` la primera vez.
+5. Seguir la guía HTML de su región.
 
-### ⚠️ Cómo descargar (si no, la GDB no abre)
+### Descarga remota (especialistas)
 
-Las geodatabases están en **Git LFS**. El botón **Code → Download ZIP** de GitHub **no trae los datos reales** (solo archivos de texto de ~130 bytes) y ArcGIS Pro muestra *File read/write error*.
+Las **GDB van dentro del ZIP** de GitHub (datos reales, no punteros).  
+Flujo pensado para trabajo remoto: bajar → abrir la carpeta de su región → trabajar en Pro.
 
-**Forma correcta:**
-
-```bat
-git clone https://github.com/GFP-Subnacional-Peru/ATD-Toolbox-ACR.git
-cd ATD-Toolbox-ACR
-git lfs install
-git lfs pull
+```text
+Code → Download ZIP  →  descomprimir  →  regiones/ATD_<Region>/
 ```
 
-O copiar la carpeta `regiones/ATD_<Region>/` desde un USB/paquete ya con LFS bajado.
+Si alguna `.gdbtable` pesa ~130 bytes y al abrirla dice `git-lfs`, esa carpeta está incompleta: vuelva a bajar el ZIP del commit más reciente.
 
-**Comprobar:** en `GDB\…\*.gdbtable` el tamaño debe ser de **KB/MB**, no ~130 bytes. Si al abrir el archivo con Bloc de notas sale `version https://git-lfs.github.com/...`, la GDB está rota.
-
-**Qué pesa:** geodatabases (datos) + logos + capturas del README.  
-Para taller: puede copiar solo la carpeta de una región por USB.
+**Qué incluye el paquete:** toolbox + GDB + logos + guías HTML + capturas del README.  
+Los PDF e imágenes satelitales los genera cada especialista en su PC (`pdfs/`, `imagenes_sentinel/`).
 
 ---
 
