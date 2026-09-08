@@ -94,7 +94,14 @@ flowchart LR
   E --> F[pdfs/ local]
 ```
 
-> Puede saltar **H1** si la GDB ya tiene alertas. Los PDF e imágenes **no se suben a GitHub**.
+### Así sale el reporte (H3)
+
+<p align="center">
+  <img src="docs/guia/guia_h3_reporte_pdf.png" alt="Ejemplo reporte ATD — ANPCH Alto Nanay" width="820" />
+</p>
+<p align="center"><em>H3 — Reporte técnico ATD (ejemplo ANPCH · ACR Alto Nanay Pintuyacu Chambira)</em></p>
+
+> Puede saltar **H1** si la GDB ya tiene alertas. En el repo solo hay esta **captura**; el PDF lo genera usted en `pdfs/` con H3.
 
 ---
 
