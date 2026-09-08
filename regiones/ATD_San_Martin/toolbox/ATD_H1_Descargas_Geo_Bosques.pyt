@@ -76,11 +76,12 @@ class Toolbox(object):
         )
         self.alias       = "ATD_H1_InsertarAlertas"
         self.description = (
-            "ATD TOOLBOX H1 — GFP Subnacional Loreto/Cuzco/San Martin v5.9\n\n"
+            "ATD TOOLBOX H1 — GFP Subnacional Loreto/Cuzco/San Martin v5.10\n\n"
             "Descarga alertas Geobosques del año seleccionado y las\n"
             "inserta en el FC existente MonitoreoDeforestacion (vigente).\n\n"
             "El historico 2001-2025 permanece en MonitoreoDeforestacionAcumulado.\n\n"
-            "v5.9: Filtro por ACR (incluye su ZI) y recorte real por fecha\n"
+            "v5.10: San Martin — clip ACR+ZI (Zona_Influencia_Propuesta),\n"
+            "  zonif texto completo, sector vacio, ACR_ZI con siglas.\n"
             "de imagen Geobosques (md_fecimg). El ZIP de Geobosques es anual;\n"
             "el periodo inicio/fin ahora SI filtra que alertas se insertan.\n\n"
             "Procesa ACRs (anp_codi) y Zonas de Influencia (zona_influencia).\n"
@@ -427,6 +428,168 @@ def _mapa_oid_desde_spatial_join(fc_alertas, fc_ref, campo_ref, where_alertas=No
     return out_map
 
 
+def _activar_reglas_h1_san_martin(gdb, h1_cfg, msg_fn=None):
+    """
+    San Martin: si existe Zona_Influencia_Propuesta (o la region es SM),
+    fuerza clip ZI extra + zonif texto completo + sector en blanco.
+    No depende solo de h1_config (evita cache / region mal detectada).
+    """
+    msg = msg_fn or (lambda *a, **k: None)
+    cfg = dict(h1_cfg or {})
+    zi_name = (cfg.get("fc_zi") or "Zona_Influencia_Propuesta").strip()
+    zi_path = os.path.join(gdb, zi_name)
+    es_sm = (
+        (_REGION_ACTIVA or "").lower() == "san_martin"
+        or bool(cfg.get("fc_zi"))
+        or bool(cfg.get("omitir_sector"))
+        or bool(cfg.get("zonif_texto_completo"))
+        or arcpy.Exists(zi_path)
+    )
+    if not es_sm:
+        return cfg, False
+
+    if arcpy.Exists(zi_path):
+        cfg["fc_zi"] = zi_name
+    cfg["omitir_sector"] = True
+    cfg["zonif_texto_completo"] = True
+    cfg.setdefault("zi_campo_acr", ["anp_codi", "acr_codi"])
+    cfg.setdefault("zi_campo_flag", ["ACR_ZI", "acr_zi"])
+    msg("   REGLAS SAN MARTIN ACTIVAS")
+    msg(f"   - Clip ACR + ZI ({cfg.get('fc_zi') or 'N/A'})")
+    msg("   - md_zonif = texto completo de z_tipo (Zonificacion en ANP)")
+    msg("   - Sector / Nombre del Sector = vacio")
+    msg("   - ACR_ZI = ZI CE / ZI BOSHUMI en alertas de ZI")
+    return cfg, True
+
+
+def _zonif_texto_desde_codigo(val):
+    """Si llego un codigo PE/S/AD, devolver nombre legible (fallback)."""
+    v = str(val or "").strip()
+    if not v:
+        return None
+    mapa = {
+        "PE": "Zona de Proteccion Estricta",
+        "S": "Zona Silvestre",
+        "AD": "Zona de Aprovechamiento Directo",
+        "UE": "Zona de Uso Especial",
+        "T": "Zona de Uso Turistico y Recreativo",
+        "REC": "Zona de Recuperacion",
+        "HC": "Zona Historico Cultural",
+        "NO ZONIFICADO": "No Zonificado",
+    }
+    if v.upper() in mapa:
+        return mapa[v.upper()]
+    if len(v) <= 3 and v.upper() in {k.upper() for k in mapa}:
+        return mapa.get(v.upper()) or mapa.get(v)
+    return v
+
+
+def _postprocesar_san_martin(
+    fc_dest, gdb, anno, fc_zon, campo_tz, h1_cfg, msg_fn=None,
+):
+    """
+    Pase final SM sobre alertas del año:
+    - ac_nomb / md_sector en blanco
+    - md_zonif con texto de z_tipo (nunca PE/S/AD)
+    - ACR_ZI / zona_influencia en alertas que caen en Zona_Influencia_Propuesta
+    """
+    msg = msg_fn or (lambda *a, **k: None)
+    campos = {f.name.lower(): f.name for f in arcpy.ListFields(fc_dest)}
+    if "md_anno" not in campos:
+        return
+    where = f"{campos['md_anno']} = {int(anno)}"
+    oid_name = arcpy.Describe(fc_dest).OIDFieldName
+    n_sec = n_zon = n_zi = 0
+
+    # 1) Sector / Nombre del Sector en blanco
+    upd_blank = []
+    for key in ("ac_nomb", "md_sector"):
+        if key in campos:
+            upd_blank.append(campos[key])
+    if upd_blank:
+        with arcpy.da.UpdateCursor(fc_dest, upd_blank, where) as cur:
+            for row in cur:
+                cur.updateRow([None] * len(upd_blank))
+                n_sec += 1
+        msg(f"   SM post: {n_sec:,} filas con sector/ac_nomb en blanco")
+
+    # 2) Zonificacion texto completo desde gpo_zonif_anp.z_tipo
+    if fc_zon and arcpy.Exists(fc_zon) and campo_tz and "md_zonif" in campos:
+        mapa_zon = _mapa_oid_desde_spatial_join(
+            fc_dest, fc_zon, campo_tz, where)
+        maxlen = _len_campo_texto(fc_dest, campos["md_zonif"], 50)
+        with arcpy.da.UpdateCursor(
+            fc_dest, [oid_name, campos["md_zonif"]], where
+        ) as cur:
+            for row in cur:
+                oid = int(row[0])
+                txt = None
+                if oid in mapa_zon:
+                    txt = str(mapa_zon[oid] or "").strip()
+                if not txt:
+                    txt = _zonif_texto_desde_codigo(row[1])
+                else:
+                    # por si el join devolvio codigo
+                    if len(txt) <= 3:
+                        txt = _zonif_texto_desde_codigo(txt) or txt
+                if txt:
+                    row[1] = txt[:maxlen]
+                    cur.updateRow(row)
+                    n_zon += 1
+        msg(f"   SM post: {n_zon:,} filas md_zonif = texto completo")
+
+    # 3) Marcar alertas ZI (ACR_ZI + zona_influencia)
+    zi_name = (h1_cfg or {}).get("fc_zi") or "Zona_Influencia_Propuesta"
+    fc_zi = os.path.join(gdb, zi_name)
+    if not arcpy.Exists(fc_zi):
+        return
+    if "acr_zi" not in campos and "zona_influencia" not in campos:
+        return
+
+    # Asegurar campo zona_influencia si falta
+    if "zona_influencia" not in campos:
+        try:
+            arcpy.management.AddField(
+                fc_dest, "zona_influencia", "TEXT", field_length=50,
+                field_alias="Zona de influencia")
+            campos["zona_influencia"] = "zona_influencia"
+            msg("   SM post: campo zona_influencia creado")
+        except Exception:
+            pass
+
+    mapa_acr = _mapa_oid_desde_spatial_join(
+        fc_dest, fc_zi, "anp_codi", where)
+    if not mapa_acr:
+        msg("   SM post: sin alertas intersectando Zona_Influencia_Propuesta")
+        return
+
+    upd = [oid_name]
+    i_acrzi = i_zona = None
+    if "acr_zi" in campos:
+        i_acrzi = len(upd)
+        upd.append(campos["acr_zi"])
+    if "zona_influencia" in campos:
+        i_zona = len(upd)
+        upd.append(campos["zona_influencia"])
+
+    with arcpy.da.UpdateCursor(fc_dest, upd, where) as cur:
+        for row in cur:
+            oid = int(row[0])
+            if oid not in mapa_acr:
+                continue
+            cod_acr = _cod_acr_canonico(str(mapa_acr[oid] or "").strip())
+            sigla = str((ACR_SIGLAS or {}).get(cod_acr) or "").strip()
+            lbl = f"ZI {sigla}" if sigla else "ZI"
+            row = list(row)
+            if i_acrzi is not None:
+                row[i_acrzi] = lbl
+            if i_zona is not None:
+                row[i_zona] = lbl
+            cur.updateRow(row)
+            n_zi += 1
+    msg(f"   SM post: {n_zi:,} alertas marcadas ACR_ZI / zona_influencia")
+
+
 def _len_campo_texto(fc, nombre, default=255):
     """Longitud maxima de un campo texto (para truncar sin romper insert)."""
     try:
@@ -533,6 +696,9 @@ def _enriquecer_alertas_batch(
                 continue
             if zonif_texto_completo:
                 # San Martin: nombre completo de z_tipo (Zonificacion en ANP)
+                # Nunca convertir a PE/S/AD
+                if len(raw) <= 3:
+                    raw = _zonif_texto_desde_codigo(raw) or raw
                 mapa_zon[oid] = raw[:maxlen_zon]
             else:
                 code = _codigo_zonif_dominio(gdb, fc_dest, raw)
@@ -1532,7 +1698,7 @@ class InsertarAlertas(object):
             "MonitoreoDeforestacion (alertas del año en curso).\n\n"
             "Elige una o varias ACR: se corta esa ACR y su zona de influencia.\n"
             "El periodo filtra por fecha de imagen Geobosques (md_fecimg).\n\n"
-            "v5.9: filtro ACR+ZI y recorte real por fechas del periodo.\n"
+            "v5.10: SM clip Zona_Influencia_Propuesta + zonif texto + ACR_ZI.\n"
             "Reemplazar crudos (opcional, desmarcado) no borra fotointerpretadas."
         )
         self.canRunInBackground = False
@@ -1598,7 +1764,7 @@ class InsertarAlertas(object):
         p4.filter.list = ["MonitoreoDeforestacion"]
 
         p5 = arcpy.Parameter(
-            displayName="* FC de ACRs y Zonas de Influencia",
+            displayName="* FC de ACRs (ZI SM = Zona_Influencia_Propuesta auto)",
             name="fc_acr",
             datatype="GPString",
             parameterType="Required",
@@ -1606,6 +1772,10 @@ class InsertarAlertas(object):
         p5.value = "gpo_anp_monit"
         p5.filter.type = "ValueList"
         p5.filter.list = ["gpo_anp_monit"]
+        p5.description = (
+            "FC de poligonos ACR. En San Martin la ZI se corta "
+            "automaticamente desde Zona_Influencia_Propuesta."
+        )
 
         p6 = arcpy.Parameter(
             displayName="* FC de Zonificacion ANP",
@@ -1828,7 +1998,7 @@ class InsertarAlertas(object):
 
         try:
             msg("=" * 65)
-            msg(f"ATD H1 v5.9 — INSERTAR ALERTAS {anno}")
+            msg(f"ATD H1 v5.10 — INSERTAR ALERTAS {anno}")
             msg(f"GFP Subnacional - {REGION_NOMBRE}")
             msg("=" * 65)
             msg(f"   GDB destino  : {gdb}")
@@ -1926,6 +2096,7 @@ class InsertarAlertas(object):
             _asegurar_dominios(gdb)
 
             h1_cfg = h1_config_activa()
+            h1_cfg, es_sm = _activar_reglas_h1_san_martin(gdb, h1_cfg, msg)
             campos_zon_list = [
                 f.name for f in arcpy.ListFields(fc_zon)
                 if f.type not in ("OID", "Geometry", "GlobalID")]
@@ -1948,6 +2119,12 @@ class InsertarAlertas(object):
             else:
                 msg("")
                 msg("[4/7] Manteniendo registros previos (elim_prev=False)")
+                if es_sm:
+                    arcpy.AddWarning(
+                        "San Martin: marca 'Reemplazar solo alertas crudas...' "
+                        "para no mezclar filas viejas (PE/AD y sector lleno) "
+                        "con el arreglo v5.10."
+                    )
 
             # ── PASO 5: Detectar campos auxiliares ────────────────────
             msg("")
@@ -2332,6 +2509,13 @@ class InsertarAlertas(object):
                 zonif_texto_completo=zonif_texto_completo,
             )
 
+            if es_sm or omitir_sector or zonif_texto_completo:
+                msg("")
+                msg("   Post-proceso San Martin (forzar zonif/ZI/sector)...")
+                _postprocesar_san_martin(
+                    fc_dest, gdb, anno, fc_zon, campo_tz, h1_cfg, msg,
+                )
+
             try:
                 from atd_codigo_alerta import (
                     asegurar_campo_md_codigo,
@@ -2350,7 +2534,7 @@ class InsertarAlertas(object):
             # ── RESUMEN FINAL ─────────────────────────────────────────
             msg("")
             msg("=" * 65)
-            msg(f"ATD H1 v5.9 — COMPLETADO")
+            msg(f"ATD H1 v5.10 — COMPLETADO")
             msg("=" * 65)
             msg(f"   Año procesado      : {anno}")
             msg(f"   Periodo            : "
