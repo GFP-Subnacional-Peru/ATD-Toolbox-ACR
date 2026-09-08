@@ -40,12 +40,19 @@ from atd_region_config import (
     resolver_campo_h1,
     resolver_fc_h1,
     es_zi_area,
+    normalizar_anp_codi,
     REGION_NOMBRE,
     REGION_CONFIGS,
     _REGION_ACTIVA,
     ANP_CODI_ALIASES,
     ACR_NOMBRES,
+    ACR_SIGLAS,
 )
+
+# Alias institucional fijo (MPA): nunca persistir ACR18
+_LEGACY_ANP_CODI = {
+    "ACR18": "ACR34",
+}
 
 
 # ─── URL BASE GEOBOSQUES (interna, no expuesta al usuario) ────────────────────
@@ -420,8 +427,84 @@ def _mapa_oid_desde_spatial_join(fc_alertas, fc_ref, campo_ref, where_alertas=No
     return out_map
 
 
+def _len_campo_texto(fc, nombre, default=255):
+    """Longitud maxima de un campo texto (para truncar sin romper insert)."""
+    try:
+        for f in arcpy.ListFields(fc):
+            if f.name.lower() == str(nombre or "").lower():
+                return int(f.length) if f.length else default
+    except Exception:
+        pass
+    return default
+
+
+def _cargar_areas_zi_extra(gdb, h1_cfg, msg_fn=None):
+    """
+    San Martin: ZI vive en Zona_Influencia_Propuesta (no en gpo_anp_monit).
+    Devuelve areas con es_zi=True, cod='ZI CE'/'ZI BOSHUMI', cod_acr=ACR##.
+    """
+    msg = msg_fn or (lambda *a, **k: None)
+    h1_cfg = h1_cfg or {}
+    fc_name = (h1_cfg.get("fc_zi") or "").strip()
+    if not fc_name:
+        return []
+    fc = os.path.join(gdb, fc_name)
+    if not arcpy.Exists(fc):
+        arcpy.AddWarning(f"   FC ZI no encontrado: {fc_name}")
+        return []
+
+    campos = {f.name.lower(): f.name for f in arcpy.ListFields(fc)}
+    campo_acr = None
+    for c in (h1_cfg.get("zi_campo_acr") or ["anp_codi", "acr_codi"]):
+        if str(c).lower() in campos:
+            campo_acr = campos[str(c).lower()]
+            break
+    if not campo_acr:
+        arcpy.AddWarning(f"   {fc_name}: sin campo anp_codi/acr_codi")
+        return []
+
+    campo_flag = None
+    for c in (h1_cfg.get("zi_campo_flag") or ["ACR_ZI", "acr_zi"]):
+        if str(c).lower() in campos:
+            campo_flag = campos[str(c).lower()]
+            break
+
+    leer = ["SHAPE@", campo_acr]
+    if campo_flag:
+        leer.append(campo_flag)
+
+    out = []
+    with arcpy.da.SearchCursor(fc, leer) as cur:
+        for row in cur:
+            geom = row[0]
+            cod_acr = _cod_acr_canonico(str(row[1] or "").strip())
+            if not geom or not cod_acr:
+                continue
+            flag = "ZI"
+            if campo_flag:
+                flag = str(row[2] or "").strip() or "ZI"
+            sigla = str((ACR_SIGLAS or {}).get(cod_acr) or "").strip()
+            if sigla:
+                lbl = f"ZI {sigla}"
+                acr_zi_val = f"ZI {sigla}"
+            else:
+                lbl = flag if str(flag).upper().startswith("ZI") else f"ZI {flag}"
+                acr_zi_val = flag if flag else "ZI"
+            out.append({
+                "cod": lbl,
+                "cod_acr": cod_acr,
+                "nom": "",
+                "geom": geom,
+                "es_zi": True,
+                "acr_zi": acr_zi_val,
+            })
+    msg(f"   ZI desde {fc_name}: {len(out)} poligonos")
+    return out
+
+
 def _enriquecer_alertas_batch(
     fc_dest, gdb, anno, fc_zon, campo_tz, fc_sectores, fc_exa, col_fi, msg_fn,
+    omitir_sector=False, zonif_texto_completo=False,
 ):
     """Rellena md_sector, md_zonif y md_exa en una pasada (rapido)."""
     msg = msg_fn or (lambda *a, **k: None)
@@ -429,22 +512,34 @@ def _enriquecer_alertas_batch(
     oid_name = arcpy.Describe(fc_dest).OIDFieldName
     where = f"{campos.get('md_anno', 'md_anno')} = {int(anno)}"
     n_sec = n_zon = n_exa = 0
+    maxlen_zon = _len_campo_texto(fc_dest, campos.get("md_zonif", "md_zonif"), 255)
 
     mapa_sec = {}
-    if fc_sectores and arcpy.Exists(fc_sectores) and "md_sector" in campos:
+    if (not omitir_sector and fc_sectores and arcpy.Exists(fc_sectores)
+            and "md_sector" in campos):
         mapa_sec = _mapa_oid_desde_spatial_join(
             fc_dest, fc_sectores, "sector_nom", where)
         msg(f"   Sector (batch): {len(mapa_sec)} alertas")
+    elif omitir_sector:
+        msg("   Sector (batch): omitido (region sin sector)")
 
     mapa_zon = {}
     if fc_zon and arcpy.Exists(fc_zon) and campo_tz and "md_zonif" in campos:
         mapa_zon_raw = _mapa_oid_desde_spatial_join(
             fc_dest, fc_zon, campo_tz, where)
         for oid, txt in mapa_zon_raw.items():
-            code = _codigo_zonif_dominio(gdb, fc_dest, txt)
-            if code:
-                mapa_zon[oid] = code
-        msg(f"   Zonif (batch): {len(mapa_zon)} alertas")
+            raw = str(txt or "").strip()
+            if not raw or raw.lower() in ("nan", "none", "null", "-"):
+                continue
+            if zonif_texto_completo:
+                # San Martin: nombre completo de z_tipo (Zonificacion en ANP)
+                mapa_zon[oid] = raw[:maxlen_zon]
+            else:
+                code = _codigo_zonif_dominio(gdb, fc_dest, raw)
+                if code:
+                    mapa_zon[oid] = code
+        msg(f"   Zonif (batch): {len(mapa_zon)} alertas"
+            + (" [texto completo]" if zonif_texto_completo else ""))
 
     mapa_exa = {}
     if fc_exa and arcpy.Exists(fc_exa) and col_fi and "md_exa" in campos:
@@ -1116,8 +1211,11 @@ def _asignar_fecha_a_poligonos(poly_fc, mapa_fechas, campo_grid, anno, msg_fn=No
 
 
 def _cod_acr_canonico(cod):
-    """Normaliza ACR09 / ACR18 → ACR09 / ACR34 (alias institucional)."""
-    s = str(cod or "").strip().upper()
+    """Normaliza codigo ACR; ACR18 (legacy MPA) → ACR34 siempre."""
+    raw = str(cod or "").strip()
+    if not raw:
+        return ""
+    s = raw.upper()
     if "—" in s:
         s = s.split("—", 1)[0].strip()
     elif " - " in s:
@@ -1126,12 +1224,68 @@ def _cod_acr_canonico(cod):
     if m:
         n = int(m.group(1))
         s = f"ACR{n:02d}" if n < 10 else f"ACR{n}"
-    alias = ANP_CODI_ALIASES.get(s)
+    # 1) Alias fijo MPA (aunque no haya region cargada)
+    if s in _LEGACY_ANP_CODI:
+        return _LEGACY_ANP_CODI[s]
+    # 2) Alias de region activa
+    alias = (ANP_CODI_ALIASES or {}).get(s)
     if alias:
         return alias
+    # 3) Catalogo + nombres (Medio Putumayo → ACR34, etc.)
+    try:
+        n = normalizar_anp_codi(raw)
+        if n:
+            nu = str(n).strip().upper()
+            if nu in _LEGACY_ANP_CODI:
+                return _LEGACY_ANP_CODI[nu]
+            return n
+    except Exception:
+        pass
     if s in ACR_NOMBRES:
         return s
-    return s or str(cod or "").strip()
+    return s or raw
+
+
+def _codigos_equivalentes_anp(cod):
+    """Codigos que representan la misma ACR (incluye legacy ACR18↔ACR34)."""
+    can = _cod_acr_canonico(cod)
+    out = set()
+    if can:
+        out.add(can)
+    if cod:
+        out.add(str(cod).strip())
+    aliases = dict(_LEGACY_ANP_CODI)
+    aliases.update(ANP_CODI_ALIASES or {})
+    for old, nuevo in aliases.items():
+        if _cod_acr_canonico(nuevo) == can or str(nuevo).strip() == can:
+            out.add(str(old).strip())
+            out.add(str(nuevo).strip())
+            out.add(_cod_acr_canonico(old))
+    return {c for c in out if c}
+
+
+def _migrar_anp_legacy_en_fc(fc, msg=None):
+    """Reescribe anp_codi legacy (ACR18→ACR34) en el FC destino."""
+    if not fc or not arcpy.Exists(fc):
+        return 0
+    campos = _campos_map_fc(fc)
+    c_anp = campos.get("anp_codi")
+    if not c_anp:
+        return 0
+    n = 0
+    with arcpy.da.UpdateCursor(fc, [c_anp]) as cur:
+        for row in cur:
+            old = str(row[0] or "").strip()
+            if not old:
+                continue
+            nuevo = _cod_acr_canonico(old)
+            if nuevo and nuevo != old:
+                row[0] = nuevo
+                cur.updateRow(row)
+                n += 1
+    if n and msg:
+        msg(f"   anp_codi legacy corregido: {n:,} (ACR18→ACR34)")
+    return n
 
 
 def _valores_multivalor(param):
@@ -1153,17 +1307,18 @@ def _valores_multivalor(param):
 
 def _cod_acr_padre(cod, es_zi, zi_map):
     if not es_zi:
-        return cod
+        return _cod_acr_canonico(cod)
     zi_map = zi_map or {}
     lbl = str(cod or "").strip().upper()
     if not lbl.startswith("ZI "):
         lbl = "ZI " + lbl.replace("ZI_", "").replace("_", " ").strip()
-    return (
+    padre = (
         zi_map.get(lbl)
         or zi_map.get(cod)
         or zi_map.get(str(cod or "").strip())
         or zi_map.get(lbl.replace("ZI ", ""))
     )
+    return _cod_acr_canonico(padre) if padre else None
 
 
 def _codigos_acr_desde_filtro(textos, areas, nomb_to_codi=None):
@@ -1216,7 +1371,11 @@ def _filtrar_areas_por_acr(areas, cods_sel, zi_map):
     out = []
     for a in areas:
         if a.get("es_zi"):
-            padre = _cod_acr_padre(a.get("cod"), True, zi_map)
+            padre = (
+                _cod_acr_canonico(a.get("cod_acr"))
+                if a.get("cod_acr")
+                else _cod_acr_padre(a.get("cod"), True, zi_map)
+            )
             if padre and _cod_acr_canonico(padre) in sel_norm:
                 out.append(a)
         elif _cod_acr_canonico(a.get("cod")) in sel_norm:
@@ -1258,16 +1417,10 @@ def _where_eliminar_previos(fc_dest, anno, fecha_ini, fecha_fin, cods_acr):
         c_anp = campos.get("anp_codi", "anp_codi")
         vals = []
         for c in sorted(cods_acr):
-            for x in (c, _cod_acr_canonico(c)):
+            for x in _codigos_equivalentes_anp(c):
                 raw = str(x or "").replace("'", "''")
                 if raw and f"'{raw}'" not in vals:
                     vals.append(f"'{raw}'")
-            can = _cod_acr_canonico(c)
-            for old, nuevo in (ANP_CODI_ALIASES or {}).items():
-                if nuevo == can:
-                    raw = str(old).replace("'", "''")
-                    if raw and f"'{raw}'" not in vals:
-                        vals.append(f"'{raw}'")
         parts.append(f"{c_anp} IN ({','.join(vals)})")
     if fecha_ini and fecha_fin and "md_fecimg" in campos:
         c_f = campos["md_fecimg"]
@@ -1706,6 +1859,12 @@ class InsertarAlertas(object):
                     arcpy.AddError(f"FC no encontrado: {nom}")
                     return
 
+            # Limpia ACR18 legacy → ACR34 (MPA) antes de insertar
+            _migrar_anp_legacy_en_fc(fc_dest, msg)
+            fc_acum = os.path.join(gdb, "MonitoreoDeforestacionAcumulado")
+            if arcpy.Exists(fc_acum) and os.path.normpath(fc_acum) != os.path.normpath(fc_dest):
+                _migrar_anp_legacy_en_fc(fc_acum, msg)
+
             # ── Campos reales del FC destino ──────────────────────────
             campos_map = _asegurar_campos_h1(fc_dest, gdb)
             campos_dest = set(campos_map.keys())
@@ -1775,7 +1934,8 @@ class InsertarAlertas(object):
                 h1_cfg.get("zonif_campos", []),
                 campos_list=campos_zon_list,
             )
-            _asegurar_dominio_zonif(gdb, fc_dest, fc_zon, campo_tz_pre)
+            if not h1_cfg.get("zonif_texto_completo"):
+                _asegurar_dominio_zonif(gdb, fc_dest, fc_zon, campo_tz_pre)
 
             # ── PASO 4: Eliminar previos (se ejecuta tras elegir ACR) ─
             if elim_prev:
@@ -1816,8 +1976,12 @@ class InsertarAlertas(object):
 
             msg(f"   EXA campo   : {col_fi or 'no encontrado'}")
             msg(f"   Zonif campo : {campo_tz or 'no encontrado'}")
-            if campo_tz:
+            omitir_sector = bool(h1_cfg.get("omitir_sector"))
+            zonif_texto_completo = bool(h1_cfg.get("zonif_texto_completo"))
+            if campo_tz and not zonif_texto_completo:
                 _asegurar_dominio_zonif(gdb, fc_dest, fc_zon, campo_tz)
+            elif zonif_texto_completo:
+                msg("   Zonif modo  : texto completo (z_tipo / Zonificacion en ANP)")
 
             # ── PASO 6: Leer áreas (ACR + ZI) ─────────────────────────
             msg("")
@@ -1836,14 +2000,18 @@ class InsertarAlertas(object):
             areas = []
             with arcpy.da.SearchCursor(fc_acr, leer_acr) as cur:
                 for row in cur:
-                    cod      = str(row[2] or "").strip()
-                    nom      = str(row[3] or cod).strip()
+                    cod_raw = str(row[2] or "").strip()
+                    nom      = str(row[3] or cod_raw).strip()
                     tipo_val = str(row[4] or "").strip() if tiene_tipo else ""
 
-                    if not cod:
+                    if not cod_raw:
                         continue
 
-                    es_zi = es_zi_area(cod, tipo_val)
+                    es_zi = es_zi_area(cod_raw, tipo_val)
+                    # MPA: ACR18 legacy → ACR34; ZI conserva etiqueta ZI MPA
+                    cod = (
+                        cod_raw if es_zi else _cod_acr_canonico(cod_raw)
+                    ) or cod_raw
 
                     areas.append({
                         "cod":   cod,
@@ -1851,6 +2019,9 @@ class InsertarAlertas(object):
                         "geom":  row[1],
                         "es_zi": es_zi,
                     })
+
+            # San Martin: ZI en Zona_Influencia_Propuesta
+            areas.extend(_cargar_areas_zi_extra(gdb, h1_cfg, msg))
 
             n_acr = sum(1 for a in areas if not a["es_zi"])
             n_zi  = sum(1 for a in areas if a["es_zi"])
@@ -1922,7 +2093,10 @@ class InsertarAlertas(object):
 
             _asegurar_campo_md_sector(fc_dest)
             fc_sectores = os.path.join(gdb, "gpo_sectores")
-            if not arcpy.Exists(fc_sectores):
+            if omitir_sector:
+                fc_sectores = None
+                msg("   Sector / Nombre del Sector: se dejan en blanco (SM)")
+            elif not arcpy.Exists(fc_sectores):
                 fc_sectores = None
                 arcpy.AddWarning(
                     "   gpo_sectores no existe — Sector quedará vacío. "
@@ -1933,6 +2107,7 @@ class InsertarAlertas(object):
                 ("anp_codi",  True),
                 ("zi_codi",   False),
                 ("zona_influencia", False),
+                ("ACR_ZI",    False),
                 ("ac_nomb",   False),
                 ("md_fuente", True),
                 ("md_anno",   False),
@@ -1974,6 +2149,7 @@ class InsertarAlertas(object):
             i_acod  = _idx("anp_codi")
             i_zcod  = _idx("zi_codi")
             i_zona  = _idx("zona_influencia")
+            i_acrzi = _idx("ACR_ZI")
             i_nom   = _idx("ac_nomb")
             i_fue   = _idx("md_fuente")
             i_anno  = _idx("md_anno")
@@ -2008,7 +2184,11 @@ class InsertarAlertas(object):
                             "ZI "
                             + lbl.replace("ZI_", "").replace("_", " ").strip()
                         )
-                    cod_acr_padre = _cod_acr_padre(cod, True, zi_map) or cod
+                    cod_acr_padre = (
+                        _cod_acr_canonico(area.get("cod_acr"))
+                        if area.get("cod_acr")
+                        else (_cod_acr_padre(cod, True, zi_map) or cod)
+                    )
                     zona_val = lbl if " " in lbl else f"ZI {lbl[2:].strip()}"
                 else:
                     cod_acr_padre = cod
@@ -2093,8 +2273,16 @@ class InsertarAlertas(object):
                                 fila[i_zcod] = None
                             if i_zona >= 0:
                                 fila[i_zona] = zona_val
+                            if i_acrzi >= 0 and es_zi:
+                                fila[i_acrzi] = (
+                                    area.get("acr_zi") or zona_val or "ZI"
+                                )
                             if i_nom >= 0:
-                                fila[i_nom] = (nom or "")[:100]
+                                # SM: Nombre del Sector en blanco (omitir_sector)
+                                if omitir_sector:
+                                    fila[i_nom] = None
+                                else:
+                                    fila[i_nom] = (nom or "")[:100]
                             if i_fue >= 0:
                                 fila[i_fue] = cod_md_fuente
                             if i_anno >= 0:
@@ -2140,6 +2328,8 @@ class InsertarAlertas(object):
             n_con_sector, n_con_zonif, n_con_exa = _enriquecer_alertas_batch(
                 fc_dest, gdb, anno, fc_zon, campo_tz,
                 fc_sectores, fc_exa, col_fi, msg,
+                omitir_sector=omitir_sector,
+                zonif_texto_completo=zonif_texto_completo,
             )
 
             try:

@@ -51,6 +51,8 @@ REGION_CONFIGS = {
         ],
         "anp_codi_aliases": {
             "ACR18": "ACR34",
+            "ACR 18": "ACR34",
+            "18": "ACR34",
         },
         "acr_nomb_to_codi": {
             "Ampiyacu Apayacu": "ACR09",
@@ -217,6 +219,14 @@ REGION_CONFIGS = {
             "fc_anp": "gpo_anp_monit",
             "fc_zonif": "gpo_zonif_anp",
             "fc_exa": "gpo_exa",
+            # ZI en FC aparte (no viene en gpo_anp_monit)
+            "fc_zi": "Zona_Influencia_Propuesta",
+            "zi_campo_acr": ["anp_codi", "acr_codi"],
+            "zi_campo_flag": ["ACR_ZI", "acr_zi"],
+            # md_zonif: guardar texto de z_tipo tal cual (no codigo S/PE/AD)
+            "zonif_texto_completo": True,
+            # No rellenar sector / Nombre del Sector (evita errores en H3)
+            "omitir_sector": True,
             "campo_cod": ["anp_codi", "acr_codi", "cod_acr", "codigo", "cod", "CODOBJ"],
             "campo_nom": ["anp_nomb", "acr_nomb", "ANP_NOM", "nombre", "nomobj", "name"],
             "campo_tipo": ["anp_clase", "Influen", "TipZona", "tipo"],
@@ -440,6 +450,9 @@ def normalizar_anp_codi(cod):
     if not c:
         return ""
     u = c.upper()
+    # MPA: codigo institucional es ACR34 (ACR18 es legacy y no debe persistir)
+    if u.replace(" ", "") == "ACR18" or re.fullmatch(r"ACR\s*0*18", u):
+        return "ACR34"
     if u in ACR_NOMBRES:
         return u
     if u in ZI_CODI_TO_ACR:
@@ -448,6 +461,8 @@ def normalizar_anp_codi(cod):
     if alias:
         return alias
     n = normalizar_cod_acr(c)
+    if n == "ACR18":
+        return "ACR34"
     if n in ACR_NOMBRES:
         return n
     if c in ACR_NOMB_TO_CODI:
